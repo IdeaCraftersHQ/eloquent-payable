@@ -6,6 +6,7 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Route;
 use Ideacrafters\EloquentPayable\Http\Controllers\WebhookController;
 use Ideacrafters\EloquentPayable\Http\Controllers\CallbackController;
+use Ideacrafters\EloquentPayable\Http\Controllers\RedirectController;
 
 class PayableServiceProvider extends ServiceProvider
 {
@@ -23,6 +24,10 @@ class PayableServiceProvider extends ServiceProvider
         $this->app->singleton(\Ideacrafters\EloquentPayable\Processors\StripeProcessor::class);
         $this->app->singleton(\Ideacrafters\EloquentPayable\Processors\OfflineProcessor::class);
         $this->app->singleton(\Ideacrafters\EloquentPayable\Processors\NoProcessor::class);
+        
+        $this->app->singleton('payable', function ($app) {
+            return new \Ideacrafters\EloquentPayable\PayableManager();
+        });
     }
 
     /**
@@ -78,6 +83,16 @@ class PayableServiceProvider extends ServiceProvider
 
                 Route::get('/callback/failed', [CallbackController::class, 'failed'])
                     ->name('payable.callback.failed');
+
+                // Redirect routes for payment processors
+                Route::get('/redirect/success', [RedirectController::class, 'success'])
+                    ->name('payable.redirect.success');
+
+                Route::get('/redirect/cancel', [RedirectController::class, 'cancel'])
+                    ->name('payable.redirect.cancel');
+
+                Route::get('/redirect/failed', [RedirectController::class, 'failed'])
+                    ->name('payable.redirect.failed');
             });
     }
 }

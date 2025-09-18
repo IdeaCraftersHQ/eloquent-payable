@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Ideacrafters\EloquentPayable\Http\Controllers\WebhookController;
 use Ideacrafters\EloquentPayable\Http\Controllers\CallbackController;
+use Ideacrafters\EloquentPayable\Http\Controllers\RedirectController;
 
 /*
 |--------------------------------------------------------------------------
@@ -40,5 +41,15 @@ if (config('payable.routes.enabled', true)) {
 
             Route::get('/callback/failed', [CallbackController::class, 'failed'])
                 ->name('payable.callback.failed');
+
+            // Redirect routes for payment processors
+            Route::get('/redirect/success', [RedirectController::class, 'success'])
+                ->name('payable.redirect.success');
+
+            Route::get('/redirect/cancel', [RedirectController::class, 'cancel'])
+                ->name('payable.redirect.cancel');
+
+            Route::get('/redirect/failed', [RedirectController::class, 'failed'])
+                ->name('payable.redirect.failed');
         });
 }

@@ -22,13 +22,13 @@ class OfflineProcessor extends BaseProcessor
     /**
      * Process a payment for the given payable item and payer.
      *
-     * @param  mixed  $payable
-     * @param  mixed  $payer
+     * @param  Payable  $payable
+     * @param  Payer  $payer
      * @param  float  $amount
      * @param  array  $options
      * @return Payment
      */
-    public function process($payable, $payer, float $amount, array $options = []): Payment
+    public function process(Payable $payable, Payer $payer, float $amount, array $options = []): Payment
     {
         $this->validatePayable($payable);
         $this->validatePayer($payer);

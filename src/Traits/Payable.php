@@ -4,6 +4,8 @@ namespace Ideacrafters\EloquentPayable\Traits;
 
 use Ideacrafters\EloquentPayable\Models\Payment;
 use Ideacrafters\EloquentPayable\Contracts\Payable as PayableContract;
+use Ideacrafters\EloquentPayable\Contracts\Payer;
+use Ideacrafters\EloquentPayable\Contracts\PaymentRedirect;
 use Ideacrafters\EloquentPayable\Events\PaymentCreated;
 use Ideacrafters\EloquentPayable\Events\OfflinePaymentCreated;
 use Ideacrafters\EloquentPayable\Exceptions\PaymentException;
@@ -49,12 +51,12 @@ trait Payable
     /**
      * Process a payment for this payable item.
      *
-     * @param  mixed  $payer
+     * @param  Payer  $payer
      * @param  float|null  $amount
      * @param  array  $options
      * @return Payment
      */
-    public function pay($payer, ?float $amount = null, array $options = []): Payment
+    public function pay(Payer $payer, ?float $amount = null, array $options = []): Payment
     {
         $amount = $amount ?? $this->getPayableAmount($payer);
         
@@ -73,12 +75,12 @@ trait Payable
     /**
      * Create an offline payment for this payable item.
      *
-     * @param  mixed  $payer
+     * @param  Payer  $payer
      * @param  float|null  $amount
      * @param  array  $options
      * @return Payment
      */
-    public function payOffline($payer, ?float $amount = null, array $options = []): Payment
+    public function payOffline(Payer $payer, ?float $amount = null, array $options = []): Payment
     {
         $amount = $amount ?? $this->getPayableAmount($payer);
         
@@ -96,12 +98,37 @@ trait Payable
     }
 
     /**
+     * Create a redirect-based payment for this payable item.
+     *
+     * @param  Payer  $payer
+     * @param  float|null  $amount
+     * @param  array  $options
+     * @return PaymentRedirect
+     */
+    public function payRedirect(Payer $payer, ?float $amount = null, array $options = []): PaymentRedirect
+    {
+        $amount = $amount ?? $this->getPayableAmount($payer);
+        
+        if (!$this->isPayableBy($payer)) {
+            throw new PaymentException('This item is not payable by the given payer.');
+        }
+
+        $processor = $this->getPaymentProcessor($options);
+        
+        if (!$processor->supportsRedirects()) {
+            throw new PaymentException('Processor does not support redirect payments.');
+        }
+        
+        return $processor->createRedirect($this, $payer, $amount, $options);
+    }
+
+    /**
      * Get the payable amount for the given payer.
      *
-     * @param  mixed  $payer
+     * @param  Payer|null  $payer
      * @return float
      */
-    public function getPayableAmount($payer = null): float
+    public function getPayableAmount(?Payer $payer = null): float
     {
         // Default implementation - override in your model
         if (method_exists($this, 'getAmount')) {
@@ -126,10 +153,10 @@ trait Payable
     /**
      * Check if the item is payable by the given payer.
      *
-     * @param  mixed  $payer
+     * @param  Payer  $payer
      * @return bool
      */
-    public function isPayableBy($payer): bool
+    public function isPayableBy(Payer $payer): bool
     {
         // Default implementation - always payable
         // Override in your model for custom logic

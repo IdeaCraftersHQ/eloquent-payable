@@ -37,7 +37,10 @@
         "laravel": {
             "providers": [
                 "Ideacrafters\\EloquentPayable\\PayableServiceProvider"
-            ]
+            ],
+            "aliases": {
+                "Payable": "Ideacrafters\\EloquentPayable\\Facades\\Payable"
+            }
         }
     },
     "minimum-stability": "stable",

@@ -3,7 +3,11 @@
 namespace Ideacrafters\EloquentPayable\Processors;
 
 use Ideacrafters\EloquentPayable\Contracts\PaymentProcessor;
+use Ideacrafters\EloquentPayable\Contracts\Payable;
+use Ideacrafters\EloquentPayable\Contracts\Payer;
+use Ideacrafters\EloquentPayable\Contracts\PaymentRedirect;
 use Ideacrafters\EloquentPayable\Models\Payment;
+use Ideacrafters\EloquentPayable\Models\PaymentRedirectModel;
 use Ideacrafters\EloquentPayable\Exceptions\PaymentException;
 use Illuminate\Support\Facades\Config;
 
@@ -19,13 +23,39 @@ abstract class BaseProcessor implements PaymentProcessor
     /**
      * Process a payment for the given payable item and payer.
      *
-     * @param  mixed  $payable
-     * @param  mixed  $payer
+     * @param  Payable  $payable
+     * @param  Payer  $payer
      * @param  float  $amount
      * @param  array  $options
      * @return Payment
      */
-    abstract public function process($payable, $payer, float $amount, array $options = []): Payment;
+    abstract public function process(Payable $payable, Payer $payer, float $amount, array $options = []): Payment;
+
+    /**
+     * Create a redirect-based payment.
+     *
+     * @param  Payable  $payable
+     * @param  Payer  $payer
+     * @param  float  $amount
+     * @param  array  $options
+     * @return PaymentRedirect
+     */
+    public function createRedirect(Payable $payable, Payer $payer, float $amount, array $options = []): PaymentRedirect
+    {
+        throw new PaymentException('Redirect payments not supported by this processor.');
+    }
+
+    /**
+     * Complete a redirect-based payment.
+     *
+     * @param  Payment  $payment
+     * @param  array  $redirectData
+     * @return Payment
+     */
+    public function completeRedirect(Payment $payment, array $redirectData = []): Payment
+    {
+        throw new PaymentException('Redirect payments not supported by this processor.');
+    }
 
     /**
      * Refund a payment.
@@ -49,22 +79,78 @@ abstract class BaseProcessor implements PaymentProcessor
     }
 
     /**
+     * Check if the processor supports redirect-based payments.
+     *
+     * @return bool
+     */
+    public function supportsRedirects(): bool
+    {
+        return false;
+    }
+
+    /**
+     * Check if the processor supports immediate payments.
+     *
+     * @return bool
+     */
+    public function supportsImmediatePayments(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Get the processor's supported features.
+     *
+     * @return array
+     */
+    public function getSupportedFeatures(): array
+    {
+        return [
+            'immediate_payments' => $this->supportsImmediatePayments(),
+            'redirect_payments' => $this->supportsRedirects(),
+            'refunds' => true,
+            'webhooks' => true,
+        ];
+    }
+
+    /**
+     * Validate payment options for this processor.
+     *
+     * @param  array  $options
+     * @return bool
+     */
+    public function validateOptions(array $options): bool
+    {
+        return true;
+    }
+
+    /**
+     * Get the processor's configuration requirements.
+     *
+     * @return array
+     */
+    public function getConfigurationRequirements(): array
+    {
+        return [];
+    }
+
+    /**
      * Create a new payment record.
      *
-     * @param  mixed  $payable
-     * @param  mixed  $payer
+     * @param  Payable  $payable
+     * @param  Payer  $payer
      * @param  float  $amount
      * @param  array  $options
      * @return Payment
      */
-    protected function createPayment($payable, $payer, float $amount, array $options = []): Payment
+    protected function createPayment(Payable $payable, Payer $payer, float $amount, array $options = []): Payment
     {
         $paymentClass = Config::get('payable.models.payment');
         
         return $paymentClass::create([
-            'payer_type' => get_class($payer),
+            'payer_type' => $payer->getMorphClass(),
             'payer_id' => $payer->getKey(),
-            'payable_type' => get_class($payable),
+            'payable_type' => $payable->getMorphClass(),
             'payable_id' => $payable->getKey(),
             'amount' => $amount,
             'currency' => $options['currency'] ?? Config::get('payable.currency', 'USD'),
@@ -93,28 +179,32 @@ abstract class BaseProcessor implements PaymentProcessor
     /**
      * Validate the payer.
      *
-     * @param  mixed  $payer
+     * @param  Payer  $payer
      * @return void
      * @throws PaymentException
      */
-    protected function validatePayer($payer): void
+    protected function validatePayer(Payer $payer): void
     {
-        if (!$payer || !method_exists($payer, 'getKey')) {
-            throw new PaymentException('Invalid payer provided.');
+        if (!$payer->canMakePayments()) {
+            throw new PaymentException('Payer is not authorized to make payments.');
         }
     }
 
     /**
      * Validate the payable item.
      *
-     * @param  mixed  $payable
+     * @param  Payable  $payable
      * @return void
      * @throws PaymentException
      */
-    protected function validatePayable($payable): void
+    protected function validatePayable(Payable $payable): void
     {
-        if (!$payable || !method_exists($payable, 'getKey')) {
-            throw new PaymentException('Invalid payable item provided.');
+        if (!$payable->isPayableActive()) {
+            throw new PaymentException('Payable item is not active.');
+        }
+
+        if (!$payable->requiresPayment()) {
+            throw new PaymentException('Payable item does not require payment.');
         }
     }
 }
