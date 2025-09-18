@@ -1,2 +1,15 @@
-vendor
-.env
+/vendor/
+/node_modules/
+/.idea/
+/.vscode/
+/.env
+/.env.local
+/.env.testing
+/.env.production
+composer.lock
+package-lock.json
+yarn.lock
+.DS_Store
+Thumbs.db
+*.log
+.phpunit.result.cache
