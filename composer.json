@@ -1,0 +1,9 @@
+{
+    "name": "ideacrafters/eloquent-payable",
+    "autoload": {
+        "psr-4": {
+            "Ideacrafters\\EloquentPayable\\": "src/"
+        }
+    },
+    "require": {}
+}
