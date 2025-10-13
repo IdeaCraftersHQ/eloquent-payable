@@ -17,6 +17,136 @@ use Illuminate\Support\Facades\URL;
 trait Payable
 {
     /**
+     * Default: Resolve a human-friendly title.
+     */
+    public function getPayableTitle(): string
+    {
+        if (property_exists($this, 'title') && $this->title) {
+            return (string) $this->title;
+        }
+
+        if (property_exists($this, 'name') && $this->name) {
+            return (string) $this->name;
+        }
+
+        $classBase = class_basename(static::class);
+        $id = method_exists($this, 'getKey') ? $this->getKey() : null;
+
+        return $id ? "{$classBase} #{$id}" : $classBase;
+    }
+
+    /**
+     * Default: Use model's description when present.
+     */
+    public function getPayableDescription(): ?string
+    {
+        return property_exists($this, 'description') && $this->description
+            ? (string) $this->description
+            : null;
+    }
+
+    /**
+     * Default: Read currency from config.
+     */
+    public function getPayableCurrency(): string
+    {
+        return (string) Config::get('payable.currency', 'USD');
+    }
+
+    /**
+     * Default: Use model metadata array when present.
+     */
+    public function getPayableMetadata(): array
+    {
+        return property_exists($this, 'metadata') && is_array($this->metadata)
+            ? $this->metadata
+            : [];
+    }
+
+    /**
+     * Default: Use numeric tax property when present; otherwise 0.
+     */
+    public function getPayableTax(?Payer $payer = null): float
+    {
+        if (property_exists($this, 'tax') && is_numeric($this->tax)) {
+            return (float) $this->tax;
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * Default: Use numeric discount property when present; otherwise 0.
+     */
+    public function getPayableDiscount(?Payer $payer = null): float
+    {
+        if (property_exists($this, 'discount') && is_numeric($this->discount)) {
+            return (float) $this->discount;
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * Default: amount + tax - discount.
+     */
+    public function getPayableTotal(?Payer $payer = null): float
+    {
+        $amount = $this->getPayableAmount($payer);
+        $tax = $this->getPayableTax($payer);
+        $discount = $this->getPayableDiscount($payer);
+
+        return max(0.0, (float) $amount + (float) $tax - (float) $discount);
+    }
+
+    /**
+     * Default: requires payment unless marked free or amount resolves to 0.
+     */
+    public function requiresPayment(): bool
+    {
+        if (property_exists($this, 'is_free') && $this->is_free) {
+            return false;
+        }
+
+        try {
+            return $this->getPayableAmount(null) > 0.0;
+        } catch (\Throwable $e) {
+            return true;
+        }
+    }
+
+    /**
+     * Default: Use `due_date`/`expires_at` if instance of DateTimeInterface.
+     */
+    public function getPayableDueDate(): ?\DateTimeInterface
+    {
+        if (property_exists($this, 'due_date') && $this->due_date instanceof \DateTimeInterface) {
+            return $this->due_date;
+        }
+
+        if (property_exists($this, 'expires_at') && $this->expires_at instanceof \DateTimeInterface) {
+            return $this->expires_at;
+        }
+
+        return null;
+    }
+
+    /**
+     * Default: Use model `status`/`state` or fallback to config pending status.
+     */
+    public function getPayableStatus(): string
+    {
+        if (property_exists($this, 'status') && $this->status) {
+            return (string) $this->status;
+        }
+
+        if (property_exists($this, 'state') && $this->state) {
+            return (string) $this->state;
+        }
+
+        return (string) (Config::get('payable.statuses.pending', 'pending'));
+    }
+    /**
      * Get the payments for the payable item.
      */
     public function payments(): MorphMany
@@ -59,7 +189,7 @@ trait Payable
     public function pay(Payer $payer, ?float $amount = null, array $options = []): Payment
     {
         $amount = $amount ?? $this->getPayableAmount($payer);
-        
+
         if (!$this->isPayableBy($payer)) {
             throw new PaymentException('This item is not payable by the given payer.');
         }
@@ -83,7 +213,7 @@ trait Payable
     public function payOffline(Payer $payer, ?float $amount = null, array $options = []): Payment
     {
         $amount = $amount ?? $this->getPayableAmount($payer);
-        
+
         if (!$this->isPayableBy($payer)) {
             throw new PaymentException('This item is not payable by the given payer.');
         }
@@ -108,17 +238,17 @@ trait Payable
     public function payRedirect(Payer $payer, ?float $amount = null, array $options = []): PaymentRedirect
     {
         $amount = $amount ?? $this->getPayableAmount($payer);
-        
+
         if (!$this->isPayableBy($payer)) {
             throw new PaymentException('This item is not payable by the given payer.');
         }
 
         $processor = $this->getPaymentProcessor($options);
-        
+
         if (!$processor->supportsRedirects()) {
             throw new PaymentException('Processor does not support redirect payments.');
         }
-        
+
         return $processor->createRedirect($this, $payer, $amount, $options);
     }
 
@@ -191,7 +321,7 @@ trait Payable
     public function getPaymentUrls(Payment $payment): array
     {
         $prefix = Config::get('payable.routes.prefix', 'payable');
-        
+
         return [
             'success' => URL::to("{$prefix}/callback/success?payment={$payment->id}"),
             'cancel' => URL::to("{$prefix}/callback/cancel?payment={$payment->id}"),
@@ -209,7 +339,7 @@ trait Payable
     {
         $processorName = $options['processor'] ?? Config::get('payable.default_processor', 'stripe');
         $processors = Config::get('payable.processors', []);
-        
+
         if (!isset($processors[$processorName])) {
             throw new PaymentException("Unknown payment processor: {$processorName}");
         }
