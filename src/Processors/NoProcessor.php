@@ -3,6 +3,9 @@
 namespace Ideacrafters\EloquentPayable\Processors;
 
 use Ideacrafters\EloquentPayable\Models\Payment;
+use Ideacrafters\EloquentPayable\Contracts\Payer;
+use Ideacrafters\EloquentPayable\Contracts\Payable;
+use Ideacrafters\EloquentPayable\Processors\BaseProcessor;
 
 class NoProcessor extends BaseProcessor
 {

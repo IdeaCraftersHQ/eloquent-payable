@@ -9,6 +9,7 @@ use Ideacrafters\EloquentPayable\Models\Payment;
 use Ideacrafters\EloquentPayable\Facades\Payable;
 use Ideacrafters\EloquentPayable\Events\PaymentCompleted;
 use Ideacrafters\EloquentPayable\Events\PaymentFailed;
+use Illuminate\Routing\Controller;
 
 class RedirectController extends Controller
 {

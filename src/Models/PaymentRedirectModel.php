@@ -86,8 +86,8 @@ class PaymentRedirectModel implements PaymentRedirect
     public function __construct(
         string $redirectUrl,
         string $successUrl,
-        string $cancelUrl,
-        string $failureUrl,
+        ?string $cancelUrl,
+        ?string $failureUrl,
         string $redirectMethod = 'GET',
         array $redirectData = [],
         ?string $redirectSessionId = null,

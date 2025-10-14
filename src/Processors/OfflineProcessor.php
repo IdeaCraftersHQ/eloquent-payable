@@ -6,6 +6,8 @@ use Ideacrafters\EloquentPayable\Models\Payment;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Config;
 use Carbon\Carbon;
+use Ideacrafters\EloquentPayable\Contracts\Payable;
+use Ideacrafters\EloquentPayable\Contracts\Payer;
 
 class OfflineProcessor extends BaseProcessor
 {

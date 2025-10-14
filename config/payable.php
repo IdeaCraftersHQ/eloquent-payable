@@ -23,6 +23,7 @@ return [
     */
     'processors' => [
         'stripe' => \Ideacrafters\EloquentPayable\Processors\StripeProcessor::class,
+        'slickpay' => \Ideacrafters\EloquentPayable\Processors\SlickpayProcessor::class,
         'offline' => \Ideacrafters\EloquentPayable\Processors\OfflineProcessor::class,
         'none' => \Ideacrafters\EloquentPayable\Processors\NoProcessor::class,
     ],
@@ -114,6 +115,29 @@ return [
         'secret' => env('STRIPE_SECRET'),
         'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
         'api_version' => env('STRIPE_API_VERSION', '2020-08-27'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Slickpay Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Here you may configure Slickpay-specific settings. Make sure to set your
+    | Slickpay API key in your .env file.
+    |
+    */
+    'slickpay' => [
+        'api_key' => env('SLICKPAY_API_KEY'),
+        'sandbox_mode' => env('SLICKPAY_SANDBOX_MODE', true),
+        'dev_api' => env('SLICKPAY_DEV_API', 'https://devapi.slick-pay.com/api/v2'),
+        'prod_api' => env('SLICKPAY_PROD_API', 'https://prodapi.slick-pay.com/api/v2'),
+        'fallbacks' => [
+            'first_name' => env('SLICKPAY_FALLBACK_FIRST_NAME', 'Customer'),
+            'last_name' => env('SLICKPAY_FALLBACK_LAST_NAME', 'User'),
+            'address' => env('SLICKPAY_FALLBACK_ADDRESS', 'Not provided'),
+            'phone' => env('SLICKPAY_FALLBACK_PHONE', '0000000000'),
+            'email' => env('SLICKPAY_FALLBACK_EMAIL', 'customer@example.com'),
+        ],
     ],
 
     /*

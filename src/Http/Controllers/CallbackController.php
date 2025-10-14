@@ -7,6 +7,7 @@ use Illuminate\View\View;
 use Ideacrafters\EloquentPayable\Models\Payment;
 use Ideacrafters\EloquentPayable\Events\PaymentCompleted;
 use Ideacrafters\EloquentPayable\Events\PaymentFailed;
+use Illuminate\Routing\Controller;
 
 class CallbackController extends Controller
 {
