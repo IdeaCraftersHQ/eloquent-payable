@@ -3,6 +3,7 @@
 namespace Ideacrafters\EloquentPayable\Traits;
 
 use Carbon\Carbon;
+use Ideacrafters\EloquentPayable\Events\OfflinePaymentConfirmed;
 use Ideacrafters\EloquentPayable\Events\PaymentCanceled;
 use Ideacrafters\EloquentPayable\Events\PaymentCompleted;
 use Ideacrafters\EloquentPayable\Events\PaymentFailed;
@@ -68,26 +69,25 @@ trait PaymentLifecycle
      */
     public function markAsPaid($paidAt = null)
     {
+        // Skip if already completed (idempotent operation for backward compatibility)
         if ($this->isCompleted()) {
-            throw new PaymentException('Payment is already marked as paid.');
-        }
-
-        if ($this->isCanceled()) {
-            throw new PaymentException('Cannot mark a canceled payment as paid.');
-        }
-
-        if ($this->isFailed()) {
-            throw new PaymentException('Cannot mark a failed payment as paid. Payment must go through pending/processing states first.');
+            return $this;
         }
 
         $this->update([
             'status' => PaymentStatus::completed(),
             'paid_at' => $paidAt ?? Carbon::now(),
+            'failed_at' => null,
         ]);
 
         // Fire the payment completed event
         if ($this->shouldEmitEvents()) {
             event(new PaymentCompleted($this));
+
+            // Fire legacy OfflinePaymentConfirmed for backward compatibility
+            if ($this->isOffline()) {
+                event(new OfflinePaymentConfirmed($this));
+            }
         }
 
         return $this;
@@ -115,21 +115,15 @@ trait PaymentLifecycle
      */
     public function markAsFailed($reason = null)
     {
+        // Skip if already failed (idempotent operation for backward compatibility)
         if ($this->isFailed()) {
-            throw new PaymentException('Payment is already marked as failed.');
-        }
-
-        if ($this->isCompleted()) {
-            throw new PaymentException('Cannot mark a completed payment as failed.');
-        }
-
-        if ($this->isCanceled()) {
-            throw new PaymentException('Cannot mark a canceled payment as failed.');
+            return $this;
         }
 
         $this->update([
             'status' => PaymentStatus::failed(),
             'failed_at' => Carbon::now(),
+            'paid_at' => null,
             'notes' => $reason ? ($this->notes ? $this->notes . "\n" . $reason : $reason) : $this->notes,
         ]);
 
@@ -146,25 +140,19 @@ trait PaymentLifecycle
      *
      * @param  string|null  $reason
      * @return $this
-     * @throws PaymentException
      */
     public function markAsCanceled($reason = null)
     {
+        // Skip if already canceled (idempotent operation for backward compatibility)
         if ($this->isCanceled()) {
-            throw new PaymentException('Payment is already marked as canceled.');
-        }
-
-        if ($this->isCompleted()) {
-            throw new PaymentException('Cannot cancel a completed payment. Use refund instead.');
-        }
-
-        if ($this->isFailed()) {
-            throw new PaymentException('Cannot cancel a failed payment.');
+            return $this;
         }
 
         $this->update([
             'status' => PaymentStatus::canceled(),
             'canceled_at' => Carbon::now(),
+            'paid_at' => null,
+            'failed_at' => null,
             'notes' => $reason ? ($this->notes ? $this->notes . "\n" . $reason : $reason) : $this->notes,
         ]);
 

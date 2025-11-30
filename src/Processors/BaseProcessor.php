@@ -6,6 +6,7 @@ use Ideacrafters\EloquentPayable\Contracts\Payable;
 use Ideacrafters\EloquentPayable\Contracts\Payer;
 use Ideacrafters\EloquentPayable\Contracts\PaymentProcessor;
 use Ideacrafters\EloquentPayable\Contracts\PaymentRedirect;
+use Ideacrafters\EloquentPayable\Events\OfflinePaymentCreated;
 use Ideacrafters\EloquentPayable\Events\PaymentCreated;
 use Ideacrafters\EloquentPayable\Exceptions\PaymentException;
 use Ideacrafters\EloquentPayable\Models\Payment;
@@ -36,7 +37,13 @@ abstract class BaseProcessor implements PaymentProcessor
 
             // Fire PaymentCreated event after all processor-specific updates are complete
             if ($this->shouldEmitEvents()) {
-                event(new PaymentCreated($payment->fresh(), $this->isOffline()));
+                $freshPayment = $payment->fresh();
+                event(new PaymentCreated($freshPayment, $this->isOffline()));
+
+                // Fire legacy OfflinePaymentCreated for backward compatibility
+                if ($this->isOffline()) {
+                    event(new OfflinePaymentCreated($freshPayment));
+                }
             }
 
             // If processor completes immediately, mark as paid (PaymentCompleted event is fired by markAsPaid())
@@ -82,7 +89,13 @@ abstract class BaseProcessor implements PaymentProcessor
 
             // Fire PaymentCreated event after all processor-specific updates are complete
             if ($this->shouldEmitEvents()) {
-                event(new PaymentCreated($payment->fresh(), $this->isOffline()));
+                $freshPayment = $payment->fresh();
+                event(new PaymentCreated($freshPayment, $this->isOffline()));
+
+                // Fire legacy OfflinePaymentCreated for backward compatibility
+                if ($this->isOffline()) {
+                    event(new OfflinePaymentCreated($freshPayment));
+                }
             }
 
             return $redirect;
@@ -149,41 +162,71 @@ abstract class BaseProcessor implements PaymentProcessor
 
     /*
     |--------------------------------------------------------------------------
-    | Abstract Methods (to be implemented by child classes)
+    | Template Methods (override in child classes)
     |--------------------------------------------------------------------------
+    | These methods have default implementations for backward compatibility.
+    | New processors should override these methods to add processor-specific logic.
     */
 
     /**
-     * Protected abstract method for processing payment with processor-specific logic.
-     * Child classes implement this to add processor-specific data (references, metadata, etc.).
+     * Process payment with processor-specific logic.
+     * Override this method in child classes to add processor-specific data (references, metadata, etc.).
+     *
+     * @deprecated Override doProcess() instead of process() in new implementations.
      */
-    abstract protected function doProcess(Payment $payment, Payable $payable, Payer $payer, float $amount, array $options = []): Payment;
+    protected function doProcess(Payment $payment, Payable $payable, Payer $payer, float $amount, array $options = []): Payment
+    {
+        // Default implementation - just return the payment as-is
+        // Child classes should override this to add processor-specific logic
+        return $payment;
+    }
 
     /**
-     * Protected abstract method for creating redirect-based payment.
-     * Child classes implement this with actual logic.
+     * Create redirect-based payment with processor-specific logic.
+     * Override this method in child classes with actual logic.
      *
      * @return array{payment: Payment, redirect: PaymentRedirect}
      */
-    abstract protected function doCreateRedirect(Payable $payable, Payer $payer, float $amount, array $options = []): array;
+    protected function doCreateRedirect(Payable $payable, Payer $payer, float $amount, array $options = []): array
+    {
+        // Default implementation - throw exception
+        // Child classes should override this if they support redirects
+        throw new PaymentException('Redirect payments not supported by this processor.');
+    }
 
     /**
-     * Protected abstract method for completing redirect-based payment.
-     * Child classes implement this with actual logic.
+     * Complete redirect-based payment with processor-specific logic.
+     * Override this method in child classes with actual logic.
      */
-    abstract protected function doCompleteRedirect(Payment $payment, array $redirectData = []): Payment;
+    protected function doCompleteRedirect(Payment $payment, array $redirectData = []): Payment
+    {
+        // Default implementation - throw exception
+        // Child classes should override this if they support redirects
+        throw new PaymentException('Redirect payments not supported by this processor.');
+    }
 
     /**
-     * Protected abstract method for refunding a payment.
-     * Child classes implement this with actual logic.
+     * Refund a payment with processor-specific logic.
+     * Override this method in child classes with actual logic.
      */
-    abstract protected function doRefund(Payment $payment, ?float $amount = null): Payment;
+    protected function doRefund(Payment $payment, ?float $amount = null): Payment
+    {
+        // Default implementation - throw exception
+        // Child classes should override this if they support refunds
+        throw new PaymentException('Refunds not supported by this processor.');
+    }
 
     /**
-     * Protected abstract method for canceling a payment.
-     * Child classes implement this with actual logic.
+     * Cancel a payment with processor-specific logic.
+     * Override this method in child classes with actual logic.
      */
-    abstract protected function doCancel(Payment $payment, ?string $reason = null): Payment;
+    protected function doCancel(Payment $payment, ?string $reason = null): Payment
+    {
+        // Default implementation - just mark as canceled
+        // Child classes can override this for processor-specific cancellation logic
+        $payment->markAsCanceled($reason);
+        return $payment;
+    }
 
     /*
     |--------------------------------------------------------------------------
@@ -212,27 +255,45 @@ abstract class BaseProcessor implements PaymentProcessor
     |--------------------------------------------------------------------------
     | Feature Support Checks
     |--------------------------------------------------------------------------
+    | These methods have default implementations for backward compatibility.
+    | Override them in child classes to customize behavior.
     */
 
     /**
      * Check if the processor supports redirect-based payments.
+     * Default: false. Override in child classes that support redirects.
      */
-    abstract public function supportsRedirects(): bool;
+    public function supportsRedirects(): bool
+    {
+        return false;
+    }
 
     /**
      * Check if the processor supports immediate payments.
+     * Default: true. Override in child classes if needed.
      */
-    abstract public function supportsImmediatePayments(): bool;
+    public function supportsImmediatePayments(): bool
+    {
+        return true;
+    }
 
     /**
      * Check if the processor supports payment cancellation.
+     * Default: true. Override in child classes if needed.
      */
-    abstract public function supportsCancellation(): bool;
+    public function supportsCancellation(): bool
+    {
+        return true;
+    }
 
     /**
      * Check if the processor supports refunds.
+     * Default: true. Override in child classes if needed.
      */
-    abstract public function supportsRefunds(): bool;
+    public function supportsRefunds(): bool
+    {
+        return true;
+    }
 
     /**
      * Check if the processor supports multiple currencies.
@@ -247,8 +308,12 @@ abstract class BaseProcessor implements PaymentProcessor
 
     /**
      * Check if this is an offline processor.
+     * Default: false. Override in child classes that are offline processors.
      */
-    abstract public function isOffline(): bool;
+    public function isOffline(): bool
+    {
+        return false;
+    }
 
     /**
      * Check if the processor completes payments immediately after creation.
