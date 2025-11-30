@@ -2,6 +2,8 @@
 
 namespace Ideacrafters\EloquentPayable\Tests\Unit;
 
+require_once __DIR__ . '/TestCaseHelpers.php';
+
 use Ideacrafters\EloquentPayable\Exceptions\PaymentException;
 use Ideacrafters\EloquentPayable\Models\Payment;
 use Ideacrafters\EloquentPayable\PaymentStatus;
@@ -9,6 +11,8 @@ use Ideacrafters\EloquentPayable\Processors\ProcessorNames;
 use Ideacrafters\EloquentPayable\Processors\StripeProcessor;
 use Ideacrafters\EloquentPayable\Processors\StripeWebhookHandler;
 use Ideacrafters\EloquentPayable\Tests\TestCase;
+use Ideacrafters\EloquentPayable\Tests\Unit\TestUser;
+use Ideacrafters\EloquentPayable\Tests\Unit\TestPayable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Config;
@@ -259,9 +263,4 @@ class TestableStripeWebhookHandler extends StripeWebhookHandler
     }
 }
 
-class TestPayer extends \Illuminate\Database\Eloquent\Model
-{
-    protected $table = 'test_payers';
-    protected $fillable = ['id'];
-}
 

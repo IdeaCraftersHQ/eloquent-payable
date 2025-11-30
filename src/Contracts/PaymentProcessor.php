@@ -6,6 +6,12 @@ use Ideacrafters\EloquentPayable\Models\Payment;
 
 interface PaymentProcessor
 {
+    /*
+    |--------------------------------------------------------------------------
+    | Core Payment Operations
+    |--------------------------------------------------------------------------
+    */
+
     /**
      * Process a payment for the given payable item and payer.
      *
@@ -63,12 +69,33 @@ interface PaymentProcessor
      */
     public function handleWebhook(array $payload);
 
+    /*
+    |--------------------------------------------------------------------------
+    | Processor Identity
+    |--------------------------------------------------------------------------
+    */
+
     /**
      * Get the processor name.
      *
      * @return string
      */
     public function getName(): string;
+
+    /**
+     * Get the default currency for this processor.
+     * Returns the global currency config by default, but can be overridden
+     * by processors that require a specific currency (e.g., Slickpay uses DZD).
+     *
+     * @return string
+     */
+    public function getCurrency(): string;
+
+    /*
+    |--------------------------------------------------------------------------
+    | Feature Support Checks
+    |--------------------------------------------------------------------------
+    */
 
     /**
      * Check if the processor supports redirect-based payments.
@@ -99,6 +126,15 @@ interface PaymentProcessor
     public function supportsRefunds(): bool;
 
     /**
+     * Check if the processor supports multiple currencies.
+     * When false, the processor only supports its default currency.
+     * When true, the processor can accept payments in different currencies.
+     *
+     * @return bool
+     */
+    public function supportsMultipleCurrencies(): bool;
+
+    /**
      * Check if this is an offline processor.
      *
      * @return bool
@@ -113,6 +149,12 @@ interface PaymentProcessor
      * @return bool
      */
     public function completesImmediately(): bool;
+
+    /*
+    |--------------------------------------------------------------------------
+    | Configuration & Metadata
+    |--------------------------------------------------------------------------
+    */
 
     /**
      * Get the processor's supported features.
@@ -135,22 +177,4 @@ interface PaymentProcessor
      * @return array
      */
     public function getConfigurationRequirements(): array;
-
-    /**
-     * Get the default currency for this processor.
-     * Returns the global currency config by default, but can be overridden
-     * by processors that require a specific currency (e.g., Slickpay uses DZD).
-     *
-     * @return string
-     */
-    public function getCurrency(): string;
-
-    /**
-     * Check if the processor supports multiple currencies.
-     * When false, the processor only supports its default currency.
-     * When true, the processor can accept payments in different currencies.
-     *
-     * @return bool
-     */
-    public function supportsMultipleCurrencies(): bool;
 }

@@ -25,6 +25,12 @@ class StripeProcessor extends BaseProcessor
      */
     protected $webhookHandler;
 
+    /*
+    |--------------------------------------------------------------------------
+    | Constructor & Initialization
+    |--------------------------------------------------------------------------
+    */
+
     /**
      * Initialize the Stripe processor.
      */
@@ -34,44 +40,11 @@ class StripeProcessor extends BaseProcessor
         $this->webhookHandler = $this->createWebhookHandler();
     }
 
-    /**
-     * Create the webhook handler instance.
-     * Resolves from service container, allowing users to bind custom handlers.
-     *
-     * @return StripeWebhookHandler
-     */
-    protected function createWebhookHandler(): StripeWebhookHandler
-    {
-        return app(StripeWebhookHandler::class);
-    }
-
-    /**
-     * Initialize Stripe with configuration.
-     */
-    protected function initializeStripe(): void
-    {
-        Stripe::setApiKey(Config::get('payable.stripe.secret'));
-        Stripe::setApiVersion(Config::get('payable.stripe.api_version', '2020-08-27'));
-    }
-
-    /**
-     * Get the processor name.
-     */
-    public function getName(): string
-    {
-        return ProcessorNames::STRIPE;
-    }
-
-    /**
-     * Check if the processor supports multiple currencies.
-     * Stripe supports multiple currencies, so this returns true.
-     *
-     * @return bool
-     */
-    public function supportsMultipleCurrencies(): bool
-    {
-        return true;
-    }
+    /*
+    |--------------------------------------------------------------------------
+    | Core Payment Operations
+    |--------------------------------------------------------------------------
+    */
 
     /**
      * Process a payment with Stripe-specific logic.
@@ -176,6 +149,26 @@ class StripeProcessor extends BaseProcessor
         }
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Processor Identity
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Get the processor name.
+     */
+    public function getName(): string
+    {
+        return ProcessorNames::STRIPE;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Feature Support Checks
+    |--------------------------------------------------------------------------
+    */
+
     /**
      * Check if the processor supports redirect-based payments.
      */
@@ -209,12 +202,29 @@ class StripeProcessor extends BaseProcessor
     }
 
     /**
+     * Check if the processor supports multiple currencies.
+     * Stripe supports multiple currencies, so this returns true.
+     *
+     * @return bool
+     */
+    public function supportsMultipleCurrencies(): bool
+    {
+        return true;
+    }
+
+    /**
      * Check if this is an offline processor.
      */
     public function isOffline(): bool
     {
         return false;
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Configuration & Metadata
+    |--------------------------------------------------------------------------
+    */
 
     /**
      * Get the processor's supported features.
@@ -256,6 +266,29 @@ class StripeProcessor extends BaseProcessor
             'stripe_webhook_secret' => 'Stripe webhook secret (optional)',
         ];
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Webhook Handling
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Handle a webhook payload from Stripe.
+     *
+     * @param  array  $payload
+     * @return mixed
+     */
+    public function handleWebhook(array $payload)
+    {
+        return $this->webhookHandler->handle($payload);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Protected Helper Methods
+    |--------------------------------------------------------------------------
+    */
 
     /**
      * Process an immediate payment with a payment method.
@@ -420,14 +453,23 @@ class StripeProcessor extends BaseProcessor
     }
 
     /**
-     * Handle a webhook payload from Stripe.
+     * Create the webhook handler instance.
+     * Resolves from service container, allowing users to bind custom handlers.
      *
-     * @param  array  $payload
-     * @return mixed
+     * @return StripeWebhookHandler
      */
-    public function handleWebhook(array $payload)
+    protected function createWebhookHandler(): StripeWebhookHandler
     {
-        return $this->webhookHandler->handle($payload);
+        return app(StripeWebhookHandler::class);
+    }
+
+    /**
+     * Initialize Stripe with configuration.
+     */
+    protected function initializeStripe(): void
+    {
+        Stripe::setApiKey(Config::get('payable.stripe.secret'));
+        Stripe::setApiVersion(Config::get('payable.stripe.api_version', '2020-08-27'));
     }
 
     /**

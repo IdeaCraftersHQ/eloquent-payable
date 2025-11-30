@@ -17,37 +17,12 @@ use Illuminate\Support\Facades\Log;
 
 class SlickpayProcessor extends BaseProcessor
 {
-    /**
-     * Get the processor name.
-     *
-     * @return string
-     */
-    public function getName(): string
-    {
-        return ProcessorNames::SLICKPAY;
-    }
+    /*
+    |--------------------------------------------------------------------------
+    | Core Payment Operations
+    |--------------------------------------------------------------------------
+    */
 
-    /**
-     * Get the default currency for Slickpay.
-     * Slickpay uses DZD (Algerian Dinar) as its default currency.
-     *
-     * @return string
-     */
-    public function getCurrency(): string
-    {
-        return 'DZD';
-    }
-
-    /**
-     * Process a payment for the given payable item and payer.
-     * This creates a redirect-based payment since Slickpay requires external payment completion.
-     *
-     * @param  Payable  $payable
-     * @param  Payer  $payer
-     * @param  float  $amount
-     * @param  array  $options
-     * @return Payment
-     */
     /**
      * Process a payment with Slickpay-specific logic.
      *
@@ -148,6 +123,39 @@ class SlickpayProcessor extends BaseProcessor
         }
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Processor Identity
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Get the processor name.
+     *
+     * @return string
+     */
+    public function getName(): string
+    {
+        return ProcessorNames::SLICKPAY;
+    }
+
+    /**
+     * Get the default currency for Slickpay.
+     * Slickpay uses DZD (Algerian Dinar) as its default currency.
+     *
+     * @return string
+     */
+    public function getCurrency(): string
+    {
+        return 'DZD';
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Feature Support Checks
+    |--------------------------------------------------------------------------
+    */
+
     /**
      * Check if the processor supports redirect-based payments.
      *
@@ -198,6 +206,12 @@ class SlickpayProcessor extends BaseProcessor
         return false;
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Configuration & Metadata
+    |--------------------------------------------------------------------------
+    */
+
     /**
      * Get the processor's supported features.
      *
@@ -244,6 +258,12 @@ class SlickpayProcessor extends BaseProcessor
             'fallbacks.email' => 'Fallback email address',
         ];
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Protected Helper Methods
+    |--------------------------------------------------------------------------
+    */
 
     /**
      * Cancel a payment.

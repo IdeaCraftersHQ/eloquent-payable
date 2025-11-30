@@ -17,30 +17,11 @@ abstract class BaseProcessor implements PaymentProcessor
 {
     use InteractsWithPaymentEvents;
 
-    /**
-     * Get the processor name.
-     */
-    abstract public function getName(): string;
-
-    /**
-     * Process payment without firing events.
-     * Used internally by process() and doCreateRedirect() implementations.
-     */
-    protected function processPaymentWithoutEvents(Payable $payable, Payer $payer, float $amount, array $options = []): Payment
-    {
-        $this->validatePayable($payable);
-        $this->validatePayer($payer);
-        $this->validateAmount($amount);
-        $this->validateCurrency($options);
-
-        // Create payment without firing event
-        $payment = $this->createPayment($payable, $payer, $amount, $options);
-
-        // Delegate to child implementation for processor-specific logic
-        $payment = $this->doProcess($payment, $payable, $payer, $amount, $options);
-
-        return $payment;
-    }
+    /*
+    |--------------------------------------------------------------------------
+    | Core Payment Operations
+    |--------------------------------------------------------------------------
+    */
 
     /**
      * Process a payment for the given payable item and payer.
@@ -76,12 +57,6 @@ abstract class BaseProcessor implements PaymentProcessor
     }
 
     /**
-     * Protected abstract method for processing payment with processor-specific logic.
-     * Child classes implement this to add processor-specific data (references, metadata, etc.).
-     */
-    abstract protected function doProcess(Payment $payment, Payable $payable, Payer $payer, float $amount, array $options = []): Payment;
-
-    /**
      * Create a redirect-based payment.
      * Validates inputs and checks support before delegating to child implementation.
      */
@@ -93,8 +68,13 @@ abstract class BaseProcessor implements PaymentProcessor
         $this->validatePayable($payable);
         $this->validatePayer($payer);
         $this->validateAmount($amount);
+        $this->validateCurrency($options);
+
+        $payment = null; // Initialize to null
 
         try {
+            // Delegate to child implementation for processor-specific logic
+            // Child processors create the payment in doCreateRedirect()
             $result = $this->doCreateRedirect($payable, $payer, $amount, $options);
 
             $payment = $result['payment'];
@@ -108,14 +88,8 @@ abstract class BaseProcessor implements PaymentProcessor
             return $redirect;
         } catch (\Exception $e) {
             // If payment was created but doCreateRedirect failed, mark as failed
-            $payment = Payment::where('payable_type', $payable->getMorphClass())
-                ->where('payable_id', $payable->getKey())
-                ->where('payer_type', $payer->getMorphClass())
-                ->where('payer_id', $payer->getKey())
-                ->latest()
-                ->first();
-
-            if ($payment) {
+            // If $payment is null, it means validation failed before payment creation
+            if ($payment !== null) {
                 $payment->markAsFailed($e->getMessage());
             }
 
@@ -163,6 +137,29 @@ abstract class BaseProcessor implements PaymentProcessor
     }
 
     /**
+     * Handle a webhook payload from the payment processor.
+     *
+     * @return mixed
+     */
+    public function handleWebhook(array $payload)
+    {
+        // Default implementation - override in specific processors
+        return null;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Abstract Methods (to be implemented by child classes)
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Protected abstract method for processing payment with processor-specific logic.
+     * Child classes implement this to add processor-specific data (references, metadata, etc.).
+     */
+    abstract protected function doProcess(Payment $payment, Payable $payable, Payer $payer, float $amount, array $options = []): Payment;
+
+    /**
      * Protected abstract method for creating redirect-based payment.
      * Child classes implement this with actual logic.
      *
@@ -188,16 +185,34 @@ abstract class BaseProcessor implements PaymentProcessor
      */
     abstract protected function doCancel(Payment $payment, ?string $reason = null): Payment;
 
+    /*
+    |--------------------------------------------------------------------------
+    | Processor Identity
+    |--------------------------------------------------------------------------
+    */
+
     /**
-     * Handle a webhook payload from the payment processor.
-     *
-     * @return mixed
+     * Get the processor name.
      */
-    public function handleWebhook(array $payload)
+    abstract public function getName(): string;
+
+    /**
+     * Get the default currency for this processor.
+     * Returns the global currency config by default, but can be overridden
+     * by processors that require a specific currency (e.g., Slickpay uses DZD).
+     *
+     * @return string
+     */
+    public function getCurrency(): string
     {
-        // Default implementation - override in specific processors
-        return null;
+        return Config::get('payable.currency', 'USD');
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Feature Support Checks
+    |--------------------------------------------------------------------------
+    */
 
     /**
      * Check if the processor supports redirect-based payments.
@@ -220,6 +235,17 @@ abstract class BaseProcessor implements PaymentProcessor
     abstract public function supportsRefunds(): bool;
 
     /**
+     * Check if the processor supports multiple currencies.
+     * Defaults to false - processors only support their default currency.
+     *
+     * @return bool
+     */
+    public function supportsMultipleCurrencies(): bool
+    {
+        return false;
+    }
+
+    /**
      * Check if this is an offline processor.
      */
     abstract public function isOffline(): bool;
@@ -233,6 +259,12 @@ abstract class BaseProcessor implements PaymentProcessor
     {
         return false; // Most processors require external confirmation
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Configuration & Metadata
+    |--------------------------------------------------------------------------
+    */
 
     /**
      * Get the processor's supported features.
@@ -264,35 +296,30 @@ abstract class BaseProcessor implements PaymentProcessor
         return [];
     }
 
-    /**
-     * Get the default currency for this processor.
-     * Returns the global currency config by default, but can be overridden
-     * by processors that require a specific currency (e.g., Slickpay uses DZD).
-     *
-     * @return string
-     */
-    public function getCurrency(): string
-    {
-        return Config::get('payable.currency', 'USD');
-    }
+    /*
+    |--------------------------------------------------------------------------
+    | Protected Helper Methods
+    |--------------------------------------------------------------------------
+    */
 
     /**
-     * Check if the processor supports multiple currencies.
-     * Defaults to false - processors only support their default currency.
-     *
-     * @return bool
+     * Process payment without firing events.
+     * Used internally by process() and doCreateRedirect() implementations.
      */
-    public function supportsMultipleCurrencies(): bool
+    protected function processPaymentWithoutEvents(Payable $payable, Payer $payer, float $amount, array $options = []): Payment
     {
-        return false;
-    }
+        $this->validatePayable($payable);
+        $this->validatePayer($payer);
+        $this->validateAmount($amount);
+        $this->validateCurrency($options);
 
-    /**
-     * Get the processor name for event configuration checking.
-     */
-    protected function getProcessorNameForEvents(): ?string
-    {
-        return $this->getName();
+        // Create payment without firing event
+        $payment = $this->createPayment($payable, $payer, $amount, $options);
+
+        // Delegate to child implementation for processor-specific logic
+        $payment = $this->doProcess($payment, $payable, $payer, $amount, $options);
+
+        return $payment;
     }
 
     /**
@@ -316,6 +343,14 @@ abstract class BaseProcessor implements PaymentProcessor
         ]);
 
         return $payment;
+    }
+
+    /**
+     * Get the processor name for event configuration checking.
+     */
+    protected function getProcessorNameForEvents(): ?string
+    {
+        return $this->getName();
     }
 
     /**

@@ -2,6 +2,8 @@
 
 namespace Ideacrafters\EloquentPayable\Tests\Unit;
 
+require_once __DIR__ . '/TestCaseHelpers.php';
+
 use Ideacrafters\EloquentPayable\Events\PaymentCanceled;
 use Ideacrafters\EloquentPayable\Events\PaymentCompleted;
 use Ideacrafters\EloquentPayable\Events\PaymentFailed;
@@ -10,6 +12,8 @@ use Ideacrafters\EloquentPayable\Models\Payment;
 use Ideacrafters\EloquentPayable\PaymentStatus;
 use Ideacrafters\EloquentPayable\Processors\ProcessorNames;
 use Ideacrafters\EloquentPayable\Tests\TestCase;
+use Ideacrafters\EloquentPayable\Tests\Unit\TestUser;
+use Ideacrafters\EloquentPayable\Tests\Unit\TestPayable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 
@@ -35,7 +39,7 @@ class PaymentCapabilitiesTraitTest extends TestCase
     /** @test */
     public function payment_lifecycle_trait_manages_timestamps_on_status_change()
     {
-        $payer = new TestPayer(['id' => 1]);
+        $payer = new TestUser(['id' => 1]);
         $payer->save();
 
         // Test timestamp management - create separate payments for each state transition
@@ -43,7 +47,7 @@ class PaymentCapabilitiesTraitTest extends TestCase
         
         // Test completed status sets paid_at
         $completedPayment = Payment::create([
-            'payer_type' => TestPayer::class,
+            'payer_type' => TestUser::class,
             'payer_id' => 1,
             'payable_type' => 'TestInvoice',
             'payable_id' => 1,
@@ -60,7 +64,7 @@ class PaymentCapabilitiesTraitTest extends TestCase
 
         // Test failed status sets failed_at
         $failedPayment = Payment::create([
-            'payer_type' => TestPayer::class,
+            'payer_type' => TestUser::class,
             'payer_id' => 1,
             'payable_type' => 'TestInvoice',
             'payable_id' => 2,
@@ -77,7 +81,7 @@ class PaymentCapabilitiesTraitTest extends TestCase
 
         // Test canceled status sets canceled_at
         $canceledPayment = Payment::create([
-            'payer_type' => TestPayer::class,
+            'payer_type' => TestUser::class,
             'payer_id' => 1,
             'payable_type' => 'TestInvoice',
             'payable_id' => 3,
@@ -389,11 +393,11 @@ class PaymentCapabilitiesTraitTest extends TestCase
     /** @test */
     public function payment_capabilities_trait_provides_payer_relationship()
     {
-        $payer = new TestPayer(['id' => 1]);
+        $payer = new TestUser(['id' => 1]);
         $payer->save();
 
         $payment = Payment::create([
-            'payer_type' => TestPayer::class,
+            'payer_type' => TestUser::class,
             'payer_id' => 1,
             'payable_type' => 'TestInvoice',
             'payable_id' => 1,
@@ -403,7 +407,7 @@ class PaymentCapabilitiesTraitTest extends TestCase
             'processor' => ProcessorNames::STRIPE,
         ]);
 
-        $this->assertInstanceOf(TestPayer::class, $payment->payer);
+        $this->assertInstanceOf(TestUser::class, $payment->payer);
         $this->assertEquals(1, $payment->payer->id);
     }
 
@@ -431,14 +435,14 @@ class PaymentCapabilitiesTraitTest extends TestCase
     /** @test */
     public function payment_capabilities_trait_integrates_all_sub_traits()
     {
-        $payer = new TestPayer(['id' => 1]);
+        $payer = new TestUser(['id' => 1]);
         $payer->save();
 
         $payable = new TestPayable(['id' => 1]);
         $payable->save();
 
         $payment = Payment::create([
-            'payer_type' => TestPayer::class,
+            'payer_type' => TestUser::class,
             'payer_id' => 1,
             'payable_type' => TestPayable::class,
             'payable_id' => 1,
@@ -462,19 +466,5 @@ class PaymentCapabilitiesTraitTest extends TestCase
         $this->assertInstanceOf(\Illuminate\Database\Eloquent\Relations\MorphTo::class, $payment->payer());
         $this->assertInstanceOf(\Illuminate\Database\Eloquent\Relations\MorphTo::class, $payment->payable());
     }
-}
-
-class TestPayer extends \Illuminate\Database\Eloquent\Model
-{
-    protected $table = 'test_payers';
-    protected $fillable = ['id'];
-    public $timestamps = false;
-}
-
-class TestPayable extends \Illuminate\Database\Eloquent\Model
-{
-    protected $table = 'test_payables';
-    protected $fillable = ['id'];
-    public $timestamps = false;
 }
 

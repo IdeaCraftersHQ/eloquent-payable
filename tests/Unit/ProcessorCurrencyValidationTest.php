@@ -2,12 +2,16 @@
 
 namespace Ideacrafters\EloquentPayable\Tests\Unit;
 
+require_once __DIR__ . '/TestCaseHelpers.php';
+
 use Ideacrafters\EloquentPayable\Exceptions\PaymentException;
 use Ideacrafters\EloquentPayable\Processors\ProcessorNames;
 use Ideacrafters\EloquentPayable\Processors\StripeProcessor;
 use Ideacrafters\EloquentPayable\Processors\SlickpayProcessor;
 use Ideacrafters\EloquentPayable\Processors\OfflineProcessor;
 use Ideacrafters\EloquentPayable\Tests\TestCase;
+use Ideacrafters\EloquentPayable\Tests\Unit\TestUser;
+use Ideacrafters\EloquentPayable\Tests\Unit\TestPayable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
 
@@ -50,7 +54,7 @@ class ProcessorCurrencyValidationTest extends TestCase
         $processor = new StripeProcessor();
         $payable = new TestPayable(['amount' => 100.00]);
         $payable->save();
-        $payer = new TestPayer();
+        $payer = new TestUser();
         $payer->save();
 
         // Should accept USD (default)
@@ -85,7 +89,7 @@ class ProcessorCurrencyValidationTest extends TestCase
         $processor = new SlickpayProcessor();
         $payable = new TestPayable(['amount' => 100.00]);
         $payable->save();
-        $payer = new TestPayer();
+        $payer = new TestUser();
         $payer->save();
 
         $options = ['success_url' => 'https://example.com/success'];
@@ -109,7 +113,7 @@ class ProcessorCurrencyValidationTest extends TestCase
         $processor = new SlickpayProcessor();
         $payable = new TestPayable(['amount' => 100.00]);
         $payable->save();
-        $payer = new TestPayer();
+        $payer = new TestUser();
         $payer->save();
 
         // Should reject USD
@@ -129,7 +133,7 @@ class ProcessorCurrencyValidationTest extends TestCase
         $processor = new SlickpayProcessor();
         $payable = new TestPayable(['amount' => 100.00]);
         $payable->save();
-        $payer = new TestPayer();
+        $payer = new TestUser();
         $payer->save();
 
         // Should reject EUR
@@ -153,7 +157,7 @@ class ProcessorCurrencyValidationTest extends TestCase
         $processor = new SlickpayProcessor();
         $payable = new TestPayable(['amount' => 100.00]);
         $payable->save();
-        $payer = new TestPayer();
+        $payer = new TestUser();
         $payer->save();
 
         $options = ['success_url' => 'https://example.com/success'];
@@ -192,7 +196,7 @@ class ProcessorCurrencyValidationTest extends TestCase
         $processor = new OfflineProcessor();
         $payable = new TestPayable(['amount' => 100.00]);
         $payable->save();
-        $payer = new TestPayer();
+        $payer = new TestUser();
         $payer->save();
 
         // Should accept EUR (from global config)
@@ -212,7 +216,7 @@ class ProcessorCurrencyValidationTest extends TestCase
         $processor = new OfflineProcessor();
         $payable = new TestPayable(['amount' => 100.00]);
         $payable->save();
-        $payer = new TestPayer();
+        $payer = new TestUser();
         $payer->save();
 
         // Should reject USD (different from global config)
@@ -233,7 +237,7 @@ class ProcessorCurrencyValidationTest extends TestCase
         $slickpayProcessor = new SlickpayProcessor();
         $payable = new TestPayable(['amount' => 100.00]);
         $payable->save();
-        $payer = new TestPayer();
+        $payer = new TestUser();
         $payer->save();
 
         // Slickpay should use DZD when no currency provided
@@ -251,62 +255,6 @@ class ProcessorCurrencyValidationTest extends TestCase
         // Offline should use GBP (from global config) when no currency provided
         $payment2 = $offlineProcessor->process($payable2, $payer, 100.00);
         $this->assertEquals('GBP', $payment2->currency);
-    }
-}
-
-class TestPayable extends \Illuminate\Database\Eloquent\Model implements \Ideacrafters\EloquentPayable\Contracts\Payable
-{
-    use \Ideacrafters\EloquentPayable\Traits\Payable;
-
-    protected $table = 'test_payables';
-    protected $fillable = ['id', 'amount'];
-
-    public function getPayableAmount($payer = null): float
-    {
-        return $this->amount ?? 100.00;
-    }
-
-    public function isPayableBy($payer): bool
-    {
-        return true;
-    }
-
-    public function isPayableActive(): bool
-    {
-        return true;
-    }
-}
-
-class TestPayer extends \Illuminate\Database\Eloquent\Model implements \Ideacrafters\EloquentPayable\Contracts\Payer
-{
-    use \Ideacrafters\EloquentPayable\Traits\HasPayments;
-
-    protected $table = 'test_payers';
-    protected $fillable = ['id'];
-
-    public function canMakePayments(): bool
-    {
-        return true;
-    }
-
-    public function getEmail(): ?string
-    {
-        return 'test@example.com';
-    }
-
-    public function getFirstName(): ?string
-    {
-        return 'Test';
-    }
-
-    public function getLastName(): ?string
-    {
-        return 'User';
-    }
-
-    public function getBillingAddressAsString(): string
-    {
-        return '123 Test St, Test City, 12345';
     }
 }
 

@@ -14,15 +14,11 @@ use Ideacrafters\EloquentPayable\PaymentStatus;
 
 class OfflineProcessor extends BaseProcessor
 {
-    /**
-     * Get the processor name.
-     *
-     * @return string
-     */
-    public function getName(): string
-    {
-        return ProcessorNames::OFFLINE;
-    }
+    /*
+    |--------------------------------------------------------------------------
+    | Core Payment Operations
+    |--------------------------------------------------------------------------
+    */
 
     /**
      * Process a payment for the given payable item and payer.
@@ -68,56 +64,6 @@ class OfflineProcessor extends BaseProcessor
         // Offline payments don't need additional processing after creation
         // The reference and metadata are already set via options before createPayment()
         return $payment;
-    }
-
-    /**
-     * Check if the processor supports redirect-based payments.
-     *
-     * @return bool
-     */
-    public function supportsRedirects(): bool
-    {
-        return false;
-    }
-
-    /**
-     * Check if the processor supports immediate payments.
-     *
-     * @return bool
-     */
-    public function supportsImmediatePayments(): bool
-    {
-        return true;
-    }
-
-    /**
-     * Check if the processor supports payment cancellation.
-     *
-     * @return bool
-     */
-    public function supportsCancellation(): bool
-    {
-        return true;
-    }
-
-    /**
-     * Check if the processor supports refunds.
-     *
-     * @return bool
-     */
-    public function supportsRefunds(): bool
-    {
-        return true;
-    }
-
-    /**
-     * Check if this is an offline processor.
-     *
-     * @return bool
-     */
-    public function isOffline(): bool
-    {
-        return true;
     }
 
     /**
@@ -199,6 +145,84 @@ class OfflineProcessor extends BaseProcessor
 
         return $payment;
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Processor Identity
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Get the processor name.
+     *
+     * @return string
+     */
+    public function getName(): string
+    {
+        return ProcessorNames::OFFLINE;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Feature Support Checks
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Check if the processor supports redirect-based payments.
+     *
+     * @return bool
+     */
+    public function supportsRedirects(): bool
+    {
+        return false;
+    }
+
+    /**
+     * Check if the processor supports immediate payments.
+     *
+     * @return bool
+     */
+    public function supportsImmediatePayments(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Check if the processor supports payment cancellation.
+     *
+     * @return bool
+     */
+    public function supportsCancellation(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Check if the processor supports refunds.
+     *
+     * @return bool
+     */
+    public function supportsRefunds(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Check if this is an offline processor.
+     *
+     * @return bool
+     */
+    public function isOffline(): bool
+    {
+        return true;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Protected Helper Methods
+    |--------------------------------------------------------------------------
+    */
 
     /**
      * Generate a unique reference for the payment.
