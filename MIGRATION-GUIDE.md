@@ -1,6 +1,6 @@
-# Migration Guide
+# Migration Guide: From 1.x.x to 2.0.0
 
-This guide will help you migrate your application to this version, which introduces several new features and improvements while maintaining backward compatibility.
+This guide will help you migrate your application from version 1.x.x to version 2.0.0, which introduces several new features and improvements while maintaining backward compatibility.
 
 ## Quick Migration Checklist
 
