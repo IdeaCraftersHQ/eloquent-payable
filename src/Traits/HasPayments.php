@@ -147,17 +147,28 @@ trait HasPayments
     }
 
     /**
-     * Default: Use model's `phone`/`phone_number` when present.
+     * Default: Use model's `phone_number`/`phoneNumber`/`phonenumber`/`phone` when present.
      */
     public function getPhoneNumber(): ?string
     {
+        
+        if (property_exists($this, 'phone_number') && $this->phone_number) {
+            return (string) $this->phone_number;
+        }
+
+        if (property_exists($this, 'phoneNumber') && $this->phoneNumber) {
+            return (string) $this->phoneNumber;
+        }
+
+        if (property_exists($this, 'phonenumber') && $this->phonenumber) {
+            return (string) $this->phonenumber;
+        }
+
         if (property_exists($this, 'phone') && $this->phone) {
             return (string) $this->phone;
         }
 
-        return property_exists($this, 'phone_number') && $this->phone_number
-            ? (string) $this->phone_number
-            : null;
+        return null;
     }
 
     /**
@@ -337,3 +348,4 @@ trait HasPayments
             ->exists();
     }
 }
+
