@@ -3,6 +3,7 @@
 namespace Ideacrafters\EloquentPayable\Traits;
 
 use Carbon\Carbon;
+use Ideacrafters\EloquentPayable\Events\OfflinePaymentConfirmed;
 use Ideacrafters\EloquentPayable\Events\PaymentCanceled;
 use Ideacrafters\EloquentPayable\Events\PaymentCompleted;
 use Ideacrafters\EloquentPayable\Events\PaymentFailed;
@@ -88,6 +89,11 @@ trait PaymentLifecycle
         // Fire the payment completed event
         if ($this->shouldEmitEvents()) {
             event(new PaymentCompleted($this));
+            
+            // Fire deprecated OfflinePaymentConfirmed event for backward compatibility
+            if ($this->isOffline()) {
+                event(new OfflinePaymentConfirmed($this));
+            }
         }
 
         return $this;

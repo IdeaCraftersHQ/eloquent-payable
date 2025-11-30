@@ -6,6 +6,7 @@ use Ideacrafters\EloquentPayable\Contracts\Payable;
 use Ideacrafters\EloquentPayable\Contracts\Payer;
 use Ideacrafters\EloquentPayable\Contracts\PaymentProcessor;
 use Ideacrafters\EloquentPayable\Contracts\PaymentRedirect;
+use Ideacrafters\EloquentPayable\Events\OfflinePaymentCreated;
 use Ideacrafters\EloquentPayable\Events\PaymentCreated;
 use Ideacrafters\EloquentPayable\Exceptions\PaymentException;
 use Ideacrafters\EloquentPayable\Models\Payment;
@@ -36,7 +37,13 @@ abstract class BaseProcessor implements PaymentProcessor
 
             // Fire PaymentCreated event after all processor-specific updates are complete
             if ($this->shouldEmitEvents()) {
-                event(new PaymentCreated($payment->fresh(), $this->isOffline()));
+                $freshPayment = $payment->fresh();
+                event(new PaymentCreated($freshPayment, $this->isOffline()));
+                
+                // Fire deprecated OfflinePaymentCreated event for backward compatibility
+                if ($this->isOffline()) {
+                    event(new OfflinePaymentCreated($freshPayment));
+                }
             }
 
             // If processor completes immediately, mark as paid (PaymentCompleted event is fired by markAsPaid())
@@ -82,7 +89,13 @@ abstract class BaseProcessor implements PaymentProcessor
 
             // Fire PaymentCreated event after all processor-specific updates are complete
             if ($this->shouldEmitEvents()) {
-                event(new PaymentCreated($payment->fresh(), $this->isOffline()));
+                $freshPayment = $payment->fresh();
+                event(new PaymentCreated($freshPayment, $this->isOffline()));
+                
+                // Fire deprecated OfflinePaymentCreated event for backward compatibility
+                if ($this->isOffline()) {
+                    event(new OfflinePaymentCreated($freshPayment));
+                }
             }
 
             return $redirect;
