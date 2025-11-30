@@ -26,8 +26,6 @@ This guide will help you migrate your application from version 1.x.x to version 
    - [Custom Processor Refactoring](#custom-processor-refactoring-breaking-change-for-custom-processors)
    - [Configuration Updates](#configuration-updates-required)
 2. [Recommended Updates](#recommended-updates)
-   - [Using PaymentStatus Class](#update-status-access-optional-but-recommended)
-   - [Handling Canceled Payments](#handle-canceled-payments)
    - [Updating Deprecated Events](#deprecated-events-migration-recommended)
 3. [New Features](#new-features)
 4. [Event System Deep Dive](#event-system-deep-dive)
@@ -100,8 +98,8 @@ You'll see deprecation warnings. Plan to migrate (see [Deprecated Events](#depre
 
 If you have custom processors, you **MUST** do this:
 
-1. **Delete** your public `process()`, `createRedirect()`, `refund()`, `cancel()` methods
-2. **Implement** protected `doProcess()`, `doCreateRedirect()`, `doRefund()`, `doCancel()` methods instead
+1. **Rename** your public `process()`, `createRedirect()`, `refund()`, `cancel()` methods to protected `doProcess()`, `doCreateRedirect()`, `doRefund()`, `doCancel()` methods
+2. **Update** the method signatures to match the protected method signatures
 3. **Remove** all event firing code (handled automatically by `BaseProcessor`)
 4. **Remove** all validation logic (handled automatically by `BaseProcessor`)
 5. **Keep ONLY** processor-specific logic in the protected methods
@@ -199,8 +197,8 @@ class MyCustomProcessor extends BaseProcessor
 ```
 
 **Key Changes:**
-1. **Remove public method implementations** - `process()`, `createRedirect()`, `refund()`, `cancel()` are now implemented in `BaseProcessor`
-2. **Implement protected `do[Action]()` methods** - These contain only your processor-specific logic
+1. **Rename public methods to protected `do[Action]()` methods** - Change `process()` to `doProcess()`, `createRedirect()` to `doCreateRedirect()`, `refund()` to `doRefund()`, `cancel()` to `doCancel()`, and make them protected. The public methods are now implemented in `BaseProcessor`.
+2. **Update method signatures** - Ensure the protected methods match the expected signatures
 3. **Remove validation code** - Validation is now handled by `BaseProcessor`
 4. **Remove event firing** - Events are automatically fired by `BaseProcessor`
 5. **Use `processPaymentWithoutEvents()`** - For creating payments in `doCreateRedirect()` without firing events (events fire automatically after)
@@ -213,78 +211,13 @@ class MyCustomProcessor extends BaseProcessor
 - No risk of forgetting validation or events
 
 **Migration Steps:**
-1. Change public methods to protected `do[Action]()` methods
+1. Rename public methods to protected `do[Action]()` methods (change `process()` to `doProcess()`, etc.)
 2. Remove validation logic (handled by `BaseProcessor`)
 3. Remove event firing code (handled by `BaseProcessor`)
 4. Keep only processor-specific logic in the `do[Action]()` methods
 5. Test your custom processor thoroughly
 
-## Recommended Updates
-
-These changes are **optional but recommended** for better code quality and future compatibility.
-
-### 1. Update Status Access (Optional but Recommended)
-
-### 1. Payment Canceled State
-
-A new payment status `canceled` has been added to handle payment cancellations.
-
-**Usage:**
-```php
-// Cancel a payment
-$payment->markAsCanceled();
-
-// Check if canceled
-if ($payment->isCanceled()) {
-    // Handle canceled payment
-}
-
-// Query canceled payments
-$canceledPayments = Payment::canceled()->get();
-```
-
-### 2. PaymentStatus Class
-
-A new centralized class for accessing payment statuses.
-
-**Before:**
-```php
-$status = Config::get('payable.statuses.completed');
-```
-
-**After (Recommended):**
-```php
-use Ideacrafters\EloquentPayable\PaymentStatus;
-
-$status = PaymentStatus::completed();
-```
-
-### 3. Currency Validation
-
-Processors now automatically validate currency before processing payments.
-
-**Behavior:**
-- Stripe supports multiple currencies
-- Slickpay only supports DZD
-- Other processors use their default currency
-- Throws `PaymentException` if unsupported currency is used
-
-### 4. Configurable Event System
-
-Events can now be disabled globally or per-processor.
-
-**Configuration:**
-```php
-'events' => [
-    'enabled' => env('PAYABLE_EVENTS_ENABLED', true),
-    'processors' => [
-        'stripe' => false,  // Disable events for Stripe
-        'slickpay' => true, // Enable events for Slickpay
-    ],
-],
-```
-
-## Configuration Updates (Required)
+### Configuration Updates (Required)
 
 ### Update config/payable.php
 
@@ -353,42 +286,11 @@ PAYABLE_EVENTS_ENABLED=true
 PAYABLE_WEBHOOK_EVENT_IDEMPOTENCY_TTL_DAYS=30
 ```
 
-## Code Updates (Recommended)
+## Recommended Updates
 
-**Before:**
-```php
-if ($payment->status === Config::get('payable.statuses.completed')) {
-    // ...
-}
-```
+These changes are **optional but recommended** for better code quality and future compatibility.
 
-**After:**
-```php
-use Ideacrafters\EloquentPayable\PaymentStatus;
-
-if ($payment->status === PaymentStatus::completed()) {
-    // ...
-}
-```
-
-### 2. Handle Canceled Payments
-
-If you need to handle canceled payments:
-
-```php
-// Cancel a payment
-$payment->markAsCanceled();
-
-// Listen to canceled event
-use Ideacrafters\EloquentPayable\Events\PaymentCanceled;
-
-Event::listen(PaymentCanceled::class, function ($event) {
-    // Handle payment cancellation
-    Log::info('Payment canceled', ['payment_id' => $event->payment->id]);
-});
-```
-
-### 3. Update Deprecated Events
+### Update Deprecated Events
 
 See the [Deprecated Events](#deprecated-events-migration-recommended) section below for migration details.
 
@@ -456,6 +358,91 @@ $invoice->pay($client, 100.00, [
 ### 4. Configurable Event System
 
 Events can now be disabled globally or per-processor. See [Event System Deep Dive](#event-system-deep-dive) for details.
+
+### 5. Enhanced Processor Feature Support Methods
+
+**New Feature:** Three new feature detection methods have been added to the `PaymentProcessor` interface, following the `supports[Feature]()` naming convention.
+
+**New Methods:**
+1. `supportsCancellation()` - Determines if the processor supports payment cancellation
+2. `supportsRefunds()` - Determines if the processor supports refunds
+3. `supportsMultipleCurrencies()` - Determines if the processor accepts multiple currencies beyond its default
+
+**Existing Methods:**
+- `supportsRedirects()` - Determines if the processor supports redirect-based payments
+- `supportsImmediatePayments()` - Determines if the processor supports immediate payments
+
+**Usage:**
+
+```php
+$processor = app(PaymentProcessor::class);
+
+// Check feature support before using
+if ($processor->supportsRefunds()) {
+    $payment->refund();
+} else {
+    // Handle processors that don't support refunds
+}
+
+if ($processor->supportsCancellation()) {
+    $payment->cancel('Customer requested cancellation');
+}
+
+if ($processor->supportsMultipleCurrencies()) {
+    // Processor can accept payments in different currencies
+    $payment = $processor->process($payable, $payer, 100.00, ['currency' => 'EUR']);
+} else {
+    // Processor only supports its default currency
+    $payment = $processor->process($payable, $payer, 100.00);
+}
+```
+
+**Implementation in Processors:**
+
+All processors must implement these methods. The `BaseProcessor` provides:
+- Abstract methods for `supportsRedirects()`, `supportsImmediatePayments()`, `supportsCancellation()`, and `supportsRefunds()` (must be implemented)
+- Default implementation for `supportsMultipleCurrencies()` that returns `false` (can be overridden)
+
+**Example Processor Implementation:**
+
+```php
+class MyCustomProcessor extends BaseProcessor
+{
+    public function supportsRedirects(): bool
+    {
+        return true;
+    }
+    
+    public function supportsImmediatePayments(): bool
+    {
+        return true;
+    }
+    
+    public function supportsCancellation(): bool
+    {
+        return true; // Supports cancellation
+    }
+    
+    public function supportsRefunds(): bool
+    {
+        return false; // Does not support refunds
+    }
+    
+    public function supportsMultipleCurrencies(): bool
+    {
+        return true; // Override default to support multiple currencies
+    }
+}
+```
+
+**Benefits:**
+- Runtime capability detection before attempting operations
+- Prevents exceptions by validating feature support upfront
+- Explicit capability declaration in processor implementations
+- Type-safe interface contract
+
+**Implementation Notes:**
+The `BaseProcessor` validates feature support before executing operations. Attempting unsupported operations (e.g., calling `refund()` when `supportsRefunds()` returns `false`) will throw a `PaymentException`.
 
 ## Event System Deep Dive
 
@@ -538,6 +525,108 @@ Events can now be disabled globally or per-processor. See [Event System Deep Div
 - **Consistent**: Same events fire regardless of how the payment state changes
 - **Maintainable**: No need to remember to fire events manually
 - **Reliable**: No risk of forgetting to fire events in some code paths
+
+### Event Ordering with `completesImmediately()`
+
+**New Feature:** The `completesImmediately()` method on processors ensures correct event ordering for processors that complete payments immediately after creation.
+
+**The Problem:**
+Some processors (like `NoProcessor` for free items) complete payments immediately after creation. Without proper ordering, you might get:
+- `PaymentCompleted` firing before `PaymentCreated` (incorrect)
+- Events firing in unpredictable order
+- Event listeners receiving events in the wrong sequence
+
+**The Solution:**
+The `completesImmediately()` method guarantees that events fire in the correct order:
+
+1. **PaymentCreated** event fires first (after payment is created)
+2. **If** `completesImmediately()` returns `true`, then `markAsPaid()` is called
+3. **PaymentCompleted** event fires (from `markAsPaid()`)
+
+**How It Works:**
+
+In `BaseProcessor::process()`, the event flow is:
+
+```php
+// 1. Payment is created (without events)
+$payment = $this->processPaymentWithoutEvents($payable, $payer, $amount, $options);
+
+// 2. PaymentCreated event fires
+event(new PaymentCreated($freshPayment, $this->isOffline()));
+
+// 3. If processor completes immediately, mark as paid
+if ($this->completesImmediately()) {
+    $payment->markAsPaid(); // This fires PaymentCompleted event
+}
+```
+
+**Event Flow Diagram:**
+
+```
+BaseProcessor::process()
+    │
+    ├─> processPaymentWithoutEvents() [creates payment, no events]
+    │
+    ├─> PaymentCreated event fires ✅
+    │
+    └─> if (completesImmediately())
+            │
+            └─> markAsPaid()
+                │
+                └─> PaymentCompleted event fires ✅
+```
+
+**Example: NoProcessor**
+
+The `NoProcessor` (for free items) uses this feature:
+
+```php
+class NoProcessor extends BaseProcessor
+{
+    public function completesImmediately(): bool
+    {
+        return true; // Free items are immediately completed
+    }
+    
+    // ... other methods
+}
+```
+
+**When you process a free payment:**
+
+```php
+$payment = $noProcessor->process($invoice, $user, 0.00);
+
+// Events fire in this order:
+// 1. PaymentCreated ✅
+// 2. PaymentCompleted ✅ (because completesImmediately() returns true)
+```
+
+**For Custom Processors:**
+
+If your processor completes payments immediately (e.g., instant bank transfers, free items, internal credits), override `completesImmediately()`:
+
+```php
+class MyInstantProcessor extends BaseProcessor
+{
+    public function completesImmediately(): bool
+    {
+        return true; // Payments complete immediately
+    }
+    
+    // ... other methods
+}
+```
+
+**Default Behavior:**
+- `BaseProcessor` defaults to `false` (most processors require external confirmation via webhooks)
+- Only processors that explicitly return `true` will complete immediately
+
+**Why This Matters:**
+- **Event listeners** can rely on `PaymentCreated` always firing before `PaymentCompleted`
+- **Event ordering** is guaranteed and predictable
+- **No race conditions** between events
+- **Consistent behavior** across all processors
 
 ### Deprecated Events (Migration Recommended)
 
@@ -627,8 +716,8 @@ This feature was added to give users flexibility and control over event emission
 This section provides complete examples and detailed guidance for refactoring custom processors.
 
 **Key Changes:**
-1. **Remove public method implementations** - `process()`, `createRedirect()`, `refund()`, `cancel()` are now implemented in `BaseProcessor`
-2. **Implement protected `do[Action]()` methods** - These contain only your processor-specific logic
+1. **Rename public methods to protected `do[Action]()` methods** - Change `process()` to `doProcess()`, `createRedirect()` to `doCreateRedirect()`, `refund()` to `doRefund()`, `cancel()` to `doCancel()`, and make them protected. The public methods are now implemented in `BaseProcessor`.
+2. **Update method signatures** - Ensure the protected methods match the expected signatures
 3. **Remove validation code** - Validation is now handled by `BaseProcessor`
 4. **Remove event firing** - Events are automatically fired by `BaseProcessor`
 5. **Use `processPaymentWithoutEvents()`** - For creating payments in `doCreateRedirect()` without firing events (events fire automatically after)
@@ -703,7 +792,7 @@ class MyCustomProcessor extends BaseProcessor
 ```
 
 **Migration Steps:**
-1. Change public methods to protected `do[Action]()` methods
+1. Rename public methods to protected `do[Action]()` methods (change `process()` to `doProcess()`, etc.)
 2. Remove validation logic (handled by `BaseProcessor`)
 3. Remove event firing code (handled by `BaseProcessor`)
 4. Keep only processor-specific logic in the `do[Action]()` methods
@@ -853,85 +942,12 @@ Several minor improvements have been made to the `Payer` contract and `HasPaymen
 **Default Implementations in HasPayments Trait:**
 The `HasPayments` trait now provides default implementations for these new methods:
 
-```php
-// Default implementation in HasPayments trait
-public function getFirstName(): ?string
-{
-    return property_exists($this, 'first_name') ? ($this->first_name ? (string) $this->first_name : null) : null;
-}
-
-public function getLastName(): ?string
-{
-    return property_exists($this, 'last_name') ? ($this->last_name ? (string) $this->last_name : null) : null;
-}
-
-public function getBillingAddressAsString(): string
-{
-    // First checks if billing_address is a string (use it directly)
-    if (property_exists($this, 'billing_address') && is_string($this->billing_address)) {
-        return (string) $this->billing_address;
-    }
-    
-    // Otherwise, format from billing_address array
-    $billingAddress = $this->getBillingAddress();
-    
-    if ($billingAddress && is_array($billingAddress)) {
-        $addressParts = [];
-        
-        if (isset($billingAddress['street'])) {
-            $addressParts[] = $billingAddress['street'];
-        }
-        if (isset($billingAddress['city'])) {
-            $addressParts[] = $billingAddress['city'];
-        }
-        if (isset($billingAddress['state'])) {
-            $addressParts[] = $billingAddress['state'];
-        }
-        if (isset($billingAddress['country'])) {
-            $addressParts[] = $billingAddress['country'];
-        }
-        
-        return implode(', ', $addressParts);
-    }
-    
-    return '';
-}
-```
+- `getFirstName()` - Checks for `first_name` property
+- `getLastName()` - Checks for `last_name` property
+- `getBillingAddressAsString()` - Accepts `billing_address` as either a string or an array (with `street`, `city`, `state`, `country` fields), formatting array addresses as comma-separated strings
 
 **Enhanced Phone Number Checking:**
-The `getPhoneNumber()` method in the `HasPayments` trait now performs exhaustive property checking to improve flexibility:
-
-```php
-public function getPhoneNumber(): ?string
-{
-    // Checks multiple possible property names in order of preference
-    if (property_exists($this, 'phone_number') && $this->phone_number) {
-        return (string) $this->phone_number;
-    }
-    
-    if (property_exists($this, 'phoneNumber') && $this->phoneNumber) {
-        return (string) $this->phoneNumber;
-    }
-    
-    if (property_exists($this, 'phonenumber') && $this->phonenumber) {
-        return (string) $this->phonenumber;
-    }
-    
-    if (property_exists($this, 'phone') && $this->phone) {
-        return (string) $this->phone;
-    }
-    
-    return null;
-}
-```
-
-This ensures the method works with various naming conventions (`phone_number`, `phoneNumber`, `phonenumber`, `phone`) that might be used in different applications.
-
-**Benefits:**
-- **Flexibility**: Works with different property naming conventions
-- **Robustness**: Handles missing properties gracefully
-- **Consistency**: Standardized methods across all payer implementations
-- **Backward Compatible**: Existing implementations continue to work
+The `getPhoneNumber()` method in the `HasPayments` trait now performs exhaustive property checking to improve flexibility, checking for `phone_number`, `phoneNumber`, `phonenumber`, and `phone` properties in order of preference.
 
 ### Stripe Webhook Handler Refactoring
 

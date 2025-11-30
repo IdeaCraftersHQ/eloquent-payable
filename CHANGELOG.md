@@ -46,7 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Stripe supports multiple currencies
 - Slickpay restricted to DZD only
 - Throws `PaymentException` for unsupported currencies
-- `supportsMultipleCurrencies()` method for processors
+
+#### Processor Feature Detection
+- `supportsCancellation()` method to check if processor supports payment cancellation
+- `supportsRefunds()` method to check if processor supports refunds
+- `supportsMultipleCurrencies()` method to check if processor supports multiple currencies
 
 #### Event System Enhancements
 - Automatic event firing system - events fire consistently across all payment operations
