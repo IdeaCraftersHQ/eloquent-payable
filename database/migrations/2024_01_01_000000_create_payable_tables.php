@@ -29,6 +29,7 @@ class CreatePayableTables extends Migration
             $table->text('notes')->nullable();
             $table->timestamp('paid_at')->nullable();
             $table->timestamp('failed_at')->nullable();
+            $table->timestamp('canceled_at')->nullable();
             $table->timestamps();
 
             // Indexes for better performance
@@ -38,6 +39,8 @@ class CreatePayableTables extends Migration
             $table->index('processor', 'idx_processor');
             $table->index('reference', 'idx_reference');
             $table->index('paid_at', 'idx_paid_at');
+            $table->index('failed_at', 'idx_failed_at');
+            $table->index('canceled_at', 'idx_canceled_at');
             $table->index('created_at', 'idx_created_at');
         });
     }

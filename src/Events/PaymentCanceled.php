@@ -6,7 +6,7 @@ use Ideacrafters\EloquentPayable\Models\Payment;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class OfflinePaymentConfirmed
+class PaymentCanceled
 {
     use Dispatchable, SerializesModels;
 

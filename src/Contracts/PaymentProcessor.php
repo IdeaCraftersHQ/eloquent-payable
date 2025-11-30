@@ -47,6 +47,15 @@ interface PaymentProcessor
     public function refund(Payment $payment, ?float $amount = null): Payment;
 
     /**
+     * Cancel a payment.
+     *
+     * @param  Payment  $payment
+     * @param  string|null  $reason
+     * @return Payment
+     */
+    public function cancel(Payment $payment, ?string $reason = null): Payment;
+
+    /**
      * Handle a webhook payload from the payment processor.
      *
      * @param  array  $payload
@@ -76,6 +85,36 @@ interface PaymentProcessor
     public function supportsImmediatePayments(): bool;
 
     /**
+     * Check if the processor supports payment cancellation.
+     *
+     * @return bool
+     */
+    public function supportsCancellation(): bool;
+
+    /**
+     * Check if the processor supports refunds.
+     *
+     * @return bool
+     */
+    public function supportsRefunds(): bool;
+
+    /**
+     * Check if this is an offline processor.
+     *
+     * @return bool
+     */
+    public function isOffline(): bool;
+
+    /**
+     * Check if the processor completes payments immediately after creation.
+     * When true, the payment will be marked as paid and PaymentCompleted event
+     * will be fired right after PaymentCreated event in the process() method.
+     *
+     * @return bool
+     */
+    public function completesImmediately(): bool;
+
+    /**
      * Get the processor's supported features.
      *
      * @return array
@@ -96,4 +135,22 @@ interface PaymentProcessor
      * @return array
      */
     public function getConfigurationRequirements(): array;
+
+    /**
+     * Get the default currency for this processor.
+     * Returns the global currency config by default, but can be overridden
+     * by processors that require a specific currency (e.g., Slickpay uses DZD).
+     *
+     * @return string
+     */
+    public function getCurrency(): string;
+
+    /**
+     * Check if the processor supports multiple currencies.
+     * When false, the processor only supports its default currency.
+     * When true, the processor can accept payments in different currencies.
+     *
+     * @return bool
+     */
+    public function supportsMultipleCurrencies(): bool;
 }

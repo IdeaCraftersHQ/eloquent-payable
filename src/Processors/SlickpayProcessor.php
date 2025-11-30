@@ -8,6 +8,7 @@ use Ideacrafters\EloquentPayable\Contracts\PaymentRedirect;
 use Ideacrafters\EloquentPayable\Models\Payment;
 use Ideacrafters\EloquentPayable\Models\PaymentRedirectModel;
 use Ideacrafters\EloquentPayable\Exceptions\PaymentException;
+use Ideacrafters\EloquentPayable\PaymentStatus;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Http;
 use Carbon\Carbon;
@@ -23,7 +24,18 @@ class SlickpayProcessor extends BaseProcessor
      */
     public function getName(): string
     {
-        return 'slickpay';
+        return ProcessorNames::SLICKPAY;
+    }
+
+    /**
+     * Get the default currency for Slickpay.
+     * Slickpay uses DZD (Algerian Dinar) as its default currency.
+     *
+     * @return string
+     */
+    public function getCurrency(): string
+    {
+        return 'DZD';
     }
 
     /**
@@ -36,34 +48,33 @@ class SlickpayProcessor extends BaseProcessor
      * @param  array  $options
      * @return Payment
      */
-    public function process(Payable $payable, Payer $payer, float $amount, array $options = []): Payment
+    /**
+     * Process a payment with Slickpay-specific logic.
+     *
+     * @param  Payment  $payment
+     * @param  Payable  $payable
+     * @param  Payer  $payer
+     * @param  float  $amount
+     * @param  array  $options
+     * @return Payment
+     */
+    protected function doProcess(Payment $payment, Payable $payable, Payer $payer, float $amount, array $options = []): Payment
     {
-        $this->validatePayable($payable);
-        $this->validatePayer($payer);
-        $this->validateAmount($amount);
+        // Create invoice via Slickpay API
+        $invoiceResponse = $this->createInvoice($payable, $payer, $amount, $options);
 
-        $payment = $this->createPayment($payable, $payer, $amount, $options);
-
-        try {
-            // Create invoice via Slickpay API
-            $invoiceResponse = $this->createInvoice($payable, $payer, $amount, $options);
-
-            if (!$invoiceResponse['success']) {
-                throw new PaymentException('Failed to create invoice: ' . ($invoiceResponse['message'] ?? 'Unknown error'));
-            }
-
-            $payment->update([
-                'reference' => $invoiceResponse['id'],
-                'status' => Config::get('payable.statuses.processing', 'processing'),
-                'metadata' => array_merge($payment->metadata ?? [], [
-                    'slickpay_invoice_id' => $invoiceResponse['id'],
-                    'slickpay_payment_url' => $invoiceResponse['url'],
-                ]),
-            ]);
-        } catch (\Exception $e) {
-            $payment->markAsFailed($e->getMessage());
-            throw new PaymentException('Payment processing failed: ' . $e->getMessage(), 0, $e);
+        if (!$invoiceResponse['success']) {
+            throw new PaymentException('Failed to create invoice: ' . ($invoiceResponse['message'] ?? 'Unknown error'));
         }
+
+        $payment->update([
+            'reference' => $invoiceResponse['id'],
+            'status' => PaymentStatus::processing(),
+            'metadata' => array_merge($payment->metadata ?? [], [
+                'slickpay_invoice_id' => $invoiceResponse['id'],
+                'slickpay_payment_url' => $invoiceResponse['url'],
+            ]),
+        ]);
 
         return $payment;
     }
@@ -77,9 +88,10 @@ class SlickpayProcessor extends BaseProcessor
      * @param  array  $options
      * @return PaymentRedirect
      */
-    public function createRedirect(Payable $payable, Payer $payer, float $amount, array $options = []): PaymentRedirect
+    protected function doCreateRedirect(Payable $payable, Payer $payer, float $amount, array $options = []): array
     {
-        $payment = $this->process($payable, $payer, $amount, $options);
+        // Use processPaymentWithoutEvents() to reuse validation and processing logic without firing events
+        $payment = $this->processPaymentWithoutEvents($payable, $payer, $amount, $options);
 
         $paymentUrl = $payment->metadata['slickpay_payment_url'] ?? null;
 
@@ -87,20 +99,23 @@ class SlickpayProcessor extends BaseProcessor
             throw new PaymentException('Failed to get payment URL from Slickpay');
         }
 
-        return new PaymentRedirectModel(
-            redirectUrl: $paymentUrl,
-            successUrl: $options['success_url'],
-            cancelUrl: null,
-            failureUrl: null,
-            redirectMethod: 'GET',
-            redirectData: [],
-            redirectSessionId: $payment->reference,
-            redirectExpiresAt: null, // Slickpay doesn't specify expiration
-            redirectMetadata: [
-                'slickpay_invoice_id' => $payment->reference,
-                'slickpay_payment_url' => $paymentUrl,
-            ]
-        );
+        return [
+            'payment' => $payment,
+            'redirect' => new PaymentRedirectModel(
+                redirectUrl: $paymentUrl,
+                successUrl: $options['success_url'],
+                cancelUrl: null,
+                failureUrl: null,
+                redirectMethod: 'GET',
+                redirectData: [],
+                redirectSessionId: $payment->reference,
+                redirectExpiresAt: null, // Slickpay doesn't specify expiration
+                redirectMetadata: [
+                    'slickpay_invoice_id' => $payment->reference,
+                    'slickpay_payment_url' => $paymentUrl,
+                ]
+            ),
+        ];
     }
 
     /**
@@ -110,7 +125,7 @@ class SlickpayProcessor extends BaseProcessor
      * @param  array  $redirectData
      * @return Payment
      */
-    public function completeRedirect(Payment $payment, array $redirectData = []): Payment
+    protected function doCompleteRedirect(Payment $payment, array $redirectData = []): Payment
     {
         if (!$payment->reference) {
             throw new PaymentException('Cannot complete redirect payment without Slickpay invoice ID.');
@@ -123,7 +138,7 @@ class SlickpayProcessor extends BaseProcessor
                 $payment->markAsPaid();
             } else {
                 // Keep as processing if not completed yet
-                $payment->update(['status' => Config::get('payable.statuses.processing', 'processing')]);
+                $payment->update(['status' => PaymentStatus::processing()]);
             }
 
             return $payment;
@@ -144,6 +159,46 @@ class SlickpayProcessor extends BaseProcessor
     }
 
     /**
+     * Check if the processor supports immediate payments.
+     *
+     * @return bool
+     */
+    public function supportsImmediatePayments(): bool
+    {
+        return false;
+    }
+
+    /**
+     * Check if the processor supports payment cancellation.
+     *
+     * @return bool
+     */
+    public function supportsCancellation(): bool
+    {
+        return false;
+    }
+
+    /**
+     * Check if the processor supports refunds.
+     *
+     * @return bool
+     */
+    public function supportsRefunds(): bool
+    {
+        return false; // Not implemented in first iteration
+    }
+
+    /**
+     * Check if this is an offline processor.
+     *
+     * @return bool
+     */
+    public function isOffline(): bool
+    {
+        return false;
+    }
+
+    /**
      * Get the processor's supported features.
      *
      * @return array
@@ -151,9 +206,10 @@ class SlickpayProcessor extends BaseProcessor
     public function getSupportedFeatures(): array
     {
         return [
-            'immediate_payments' => false,
-            'redirect_payments' => true,
-            'refunds' => false, // Not implemented in first iteration
+            'immediate_payments' => $this->supportsImmediatePayments(),
+            'redirect_payments' => $this->supportsRedirects(),
+            'refunds' => $this->supportsRefunds(),
+            'cancellation' => $this->supportsCancellation(),
             'webhooks' => false, // Not implemented in first iteration
         ];
     }
@@ -190,14 +246,29 @@ class SlickpayProcessor extends BaseProcessor
     }
 
     /**
+     * Cancel a payment.
+     * Not supported by Slickpay processor.
+     * This method should never be called as supportsCancellation() returns false.
+     *
+     * @param  Payment  $payment
+     * @param  string|null  $reason
+     * @return Payment
+     */
+    protected function doCancel(Payment $payment, ?string $reason = null): Payment
+    {
+        throw new PaymentException('Payment cancellation not supported by Slickpay processor.');
+    }
+
+    /**
      * Refund a payment.
      * Not implemented in first iteration.
+     * This method should never be called as supportsRefunds() returns false.
      *
      * @param  Payment  $payment
      * @param  float|null  $amount
      * @return Payment
      */
-    public function refund(Payment $payment, ?float $amount = null): Payment
+    protected function doRefund(Payment $payment, ?float $amount = null): Payment
     {
         throw new PaymentException('Refunds not supported by Slickpay processor in this version.');
     }
@@ -299,16 +370,7 @@ class SlickpayProcessor extends BaseProcessor
      */
     protected function getFirstName(Payer $payer): string
     {
-        $name = $payer->getName();
-        if ($name) {
-            $nameParts = explode(' ', trim($name));
-            $firstName = $nameParts[0] ?? '';
-            if (!empty($firstName)) {
-                return $firstName;
-            }
-        }
-
-        return Config::get('payable.slickpay.fallbacks.first_name', 'Customer');
+        return $payer->getFirstName() ?? Config::get('payable.slickpay.fallbacks.first_name', 'Customer');
     }
 
     /**
@@ -319,18 +381,7 @@ class SlickpayProcessor extends BaseProcessor
      */
     protected function getLastName(Payer $payer): string
     {
-        $name = $payer->getName();
-        if ($name) {
-            $nameParts = explode(' ', trim($name));
-            if (count($nameParts) > 1) {
-                $lastName = implode(' ', array_slice($nameParts, 1));
-                if (!empty($lastName)) {
-                    return $lastName;
-                }
-            }
-        }
-
-        return Config::get('payable.slickpay.fallbacks.last_name', '');
+        return $payer->getLastName() ?? Config::get('payable.slickpay.fallbacks.last_name', '');
     }
 
     /**
@@ -341,31 +392,10 @@ class SlickpayProcessor extends BaseProcessor
      */
     protected function getAddressString(Payer $payer): string
     {
-        $billingAddress = $payer->getBillingAddress();
-
-        if ($billingAddress) {
-            $addressParts = [];
-
-            if (isset($billingAddress['street'])) {
-                $addressParts[] = $billingAddress['street'];
-            }
-
-            if (isset($billingAddress['city'])) {
-                $addressParts[] = $billingAddress['city'];
-            }
-
-            if (isset($billingAddress['state'])) {
-                $addressParts[] = $billingAddress['state'];
-            }
-
-            if (isset($billingAddress['country'])) {
-                $addressParts[] = $billingAddress['country'];
-            }
-
-            $addressString = implode(', ', $addressParts);
-            if (!empty($addressString)) {
-                return $addressString;
-            }
+        $addressString = $payer->getBillingAddressAsString();
+        
+        if (!empty($addressString)) {
+            return $addressString;
         }
 
         return Config::get('payable.slickpay.fallbacks.address', '');

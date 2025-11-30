@@ -6,9 +6,9 @@ use Ideacrafters\EloquentPayable\Models\Payment;
 use Ideacrafters\EloquentPayable\Contracts\Payable as PayableContract;
 use Ideacrafters\EloquentPayable\Contracts\Payer;
 use Ideacrafters\EloquentPayable\Contracts\PaymentRedirect;
-use Ideacrafters\EloquentPayable\Events\PaymentCreated;
-use Ideacrafters\EloquentPayable\Events\OfflinePaymentCreated;
 use Ideacrafters\EloquentPayable\Exceptions\PaymentException;
+use Ideacrafters\EloquentPayable\PaymentStatus;
+use Ideacrafters\EloquentPayable\Processors\ProcessorNames;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Event;
@@ -144,7 +144,7 @@ trait Payable
             return (string) $this->state;
         }
 
-        return (string) (Config::get('payable.statuses.pending', 'pending'));
+        return (string) PaymentStatus::pending();
     }
     /**
      * Get the payments for the payable item.
@@ -197,8 +197,7 @@ trait Payable
         $processor = $this->getPaymentProcessor($options);
         $payment = $processor->process($this, $payer, $amount, $options);
 
-        Event::dispatch(new PaymentCreated($payment));
-
+        // PaymentCreated event is already fired by BaseProcessor::createPayment()
         return $payment;
     }
 
@@ -218,12 +217,11 @@ trait Payable
             throw new PaymentException('This item is not payable by the given payer.');
         }
 
-        $options['processor'] = 'offline';
+        $options['processor'] = ProcessorNames::OFFLINE;
         $processor = $this->getPaymentProcessor($options);
         $payment = $processor->process($this, $payer, $amount, $options);
 
-        Event::dispatch(new OfflinePaymentCreated($payment));
-
+        // PaymentCreated event with isOffline=true is already fired by BaseProcessor::createPayment()
         return $payment;
     }
 
@@ -245,9 +243,7 @@ trait Payable
 
         $processor = $this->getPaymentProcessor($options);
 
-        if (!$processor->supportsRedirects()) {
-            throw new PaymentException('Processor does not support redirect payments.');
-        }
+        
 
         return $processor->createRedirect($this, $payer, $amount, $options);
     }
@@ -337,7 +333,7 @@ trait Payable
      */
     protected function getPaymentProcessor(array $options = [])
     {
-        $processorName = $options['processor'] ?? Config::get('payable.default_processor', 'stripe');
+        $processorName = $options['processor'] ?? Config::get('payable.default_processor', ProcessorNames::STRIPE);
         $processors = Config::get('payable.processors', []);
 
         if (!isset($processors[$processorName])) {
