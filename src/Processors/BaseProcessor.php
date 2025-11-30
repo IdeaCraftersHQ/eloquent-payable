@@ -2,74 +2,156 @@
 
 namespace Ideacrafters\EloquentPayable\Processors;
 
-use Ideacrafters\EloquentPayable\Contracts\PaymentProcessor;
 use Ideacrafters\EloquentPayable\Contracts\Payable;
 use Ideacrafters\EloquentPayable\Contracts\Payer;
+use Ideacrafters\EloquentPayable\Contracts\PaymentProcessor;
 use Ideacrafters\EloquentPayable\Contracts\PaymentRedirect;
-use Ideacrafters\EloquentPayable\Models\Payment;
-use Ideacrafters\EloquentPayable\Models\PaymentRedirectModel;
+use Ideacrafters\EloquentPayable\Events\OfflinePaymentCreated;
+use Ideacrafters\EloquentPayable\Events\PaymentCreated;
 use Ideacrafters\EloquentPayable\Exceptions\PaymentException;
+use Ideacrafters\EloquentPayable\Models\Payment;
+use Ideacrafters\EloquentPayable\PaymentStatus;
+use Ideacrafters\EloquentPayable\Traits\InteractsWithPaymentEvents;
 use Illuminate\Support\Facades\Config;
 
 abstract class BaseProcessor implements PaymentProcessor
 {
-    /**
-     * Get the processor name.
-     *
-     * @return string
-     */
-    abstract public function getName(): string;
+    use InteractsWithPaymentEvents;
+
+    /*
+    |--------------------------------------------------------------------------
+    | Core Payment Operations
+    |--------------------------------------------------------------------------
+    */
 
     /**
      * Process a payment for the given payable item and payer.
-     *
-     * @param  Payable  $payable
-     * @param  Payer  $payer
-     * @param  float  $amount
-     * @param  array  $options
-     * @return Payment
+     * Validates inputs, creates payment, delegates to doProcess(), then fires PaymentCreated event.
      */
-    abstract public function process(Payable $payable, Payer $payer, float $amount, array $options = []): Payment;
+    public function process(Payable $payable, Payer $payer, float $amount, array $options = []): Payment
+    {
+        $payment = null; // Initialize to null
+
+        try {
+            $payment = $this->processPaymentWithoutEvents($payable, $payer, $amount, $options);
+
+            // Fire PaymentCreated event after all processor-specific updates are complete
+            if ($this->shouldEmitEvents()) {
+                $freshPayment = $payment->fresh();
+                event(new PaymentCreated($freshPayment, $this->isOffline()));
+                
+                // Fire deprecated OfflinePaymentCreated event for backward compatibility
+                if ($this->isOffline()) {
+                    event(new OfflinePaymentCreated($freshPayment));
+                }
+            }
+
+            // If processor completes immediately, mark as paid (PaymentCompleted event is fired by markAsPaid())
+            if ($this->completesImmediately()) {
+                $payment->markAsPaid();
+            }
+
+            return $payment;
+        } catch (\Exception $e) {
+            // If payment was created but processing failed, mark as failed
+            // If $payment is null, it means validation failed before payment creation
+            if ($payment !== null) {
+                $payment->markAsFailed($e->getMessage());
+            }
+
+            throw new PaymentException('Payment processing failed: '.$e->getMessage(), 0, $e);
+        }
+    }
 
     /**
      * Create a redirect-based payment.
-     *
-     * @param  Payable  $payable
-     * @param  Payer  $payer
-     * @param  float  $amount
-     * @param  array  $options
-     * @return PaymentRedirect
+     * Validates inputs and checks support before delegating to child implementation.
      */
     public function createRedirect(Payable $payable, Payer $payer, float $amount, array $options = []): PaymentRedirect
     {
-        throw new PaymentException('Redirect payments not supported by this processor.');
+        if (! $this->supportsRedirects()) {
+            throw new PaymentException('Redirect payments not supported by this processor.');
+        }
+        $this->validatePayable($payable);
+        $this->validatePayer($payer);
+        $this->validateAmount($amount);
+        $this->validateCurrency($options);
+
+        $payment = null; // Initialize to null
+
+        try {
+            // Delegate to child implementation for processor-specific logic
+            // Child processors create the payment in doCreateRedirect()
+            $result = $this->doCreateRedirect($payable, $payer, $amount, $options);
+
+            $payment = $result['payment'];
+            $redirect = $result['redirect'];
+
+            // Fire PaymentCreated event after all processor-specific updates are complete
+            if ($this->shouldEmitEvents()) {
+                $freshPayment = $payment->fresh();
+                event(new PaymentCreated($freshPayment, $this->isOffline()));
+                
+                // Fire deprecated OfflinePaymentCreated event for backward compatibility
+                if ($this->isOffline()) {
+                    event(new OfflinePaymentCreated($freshPayment));
+                }
+            }
+
+            return $redirect;
+        } catch (\Exception $e) {
+            // If payment was created but doCreateRedirect failed, mark as failed
+            // If $payment is null, it means validation failed before payment creation
+            if ($payment !== null) {
+                $payment->markAsFailed($e->getMessage());
+            }
+
+            throw new PaymentException('Redirect payment creation failed: '.$e->getMessage(), 0, $e);
+        }
     }
 
     /**
      * Complete a redirect-based payment.
-     *
-     * @param  Payment  $payment
-     * @param  array  $redirectData
-     * @return Payment
+     * Checks support before delegating to child implementation.
      */
     public function completeRedirect(Payment $payment, array $redirectData = []): Payment
     {
-        throw new PaymentException('Redirect payments not supported by this processor.');
+        if (! $this->supportsRedirects()) {
+            throw new PaymentException('Redirect payments not supported by this processor.');
+        }
+
+        return $this->doCompleteRedirect($payment, $redirectData);
     }
 
     /**
      * Refund a payment.
-     *
-     * @param  Payment  $payment
-     * @param  float|null  $amount
-     * @return Payment
+     * Checks support before delegating to child implementation.
      */
-    abstract public function refund(Payment $payment, ?float $amount = null): Payment;
+    public function refund(Payment $payment, ?float $amount = null): Payment
+    {
+        if (! $this->supportsRefunds()) {
+            throw new PaymentException('Refunds not supported by this processor.');
+        }
+
+        return $this->doRefund($payment, $amount);
+    }
+
+    /**
+     * Cancel a payment.
+     * Checks support before delegating to child implementation.
+     */
+    public function cancel(Payment $payment, ?string $reason = null): Payment
+    {
+        if (! $this->supportsCancellation()) {
+            throw new PaymentException('Payment cancellation not supported by this processor.');
+        }
+
+        return $this->doCancel($payment, $reason);
+    }
 
     /**
      * Handle a webhook payload from the payment processor.
      *
-     * @param  array  $payload
      * @return mixed
      */
     public function handleWebhook(array $payload)
@@ -78,46 +160,141 @@ abstract class BaseProcessor implements PaymentProcessor
         return null;
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Abstract Methods (to be implemented by child classes)
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Protected abstract method for processing payment with processor-specific logic.
+     * Child classes implement this to add processor-specific data (references, metadata, etc.).
+     */
+    abstract protected function doProcess(Payment $payment, Payable $payable, Payer $payer, float $amount, array $options = []): Payment;
+
+    /**
+     * Protected abstract method for creating redirect-based payment.
+     * Child classes implement this with actual logic.
+     *
+     * @return array{payment: Payment, redirect: PaymentRedirect}
+     */
+    abstract protected function doCreateRedirect(Payable $payable, Payer $payer, float $amount, array $options = []): array;
+
+    /**
+     * Protected abstract method for completing redirect-based payment.
+     * Child classes implement this with actual logic.
+     */
+    abstract protected function doCompleteRedirect(Payment $payment, array $redirectData = []): Payment;
+
+    /**
+     * Protected abstract method for refunding a payment.
+     * Child classes implement this with actual logic.
+     */
+    abstract protected function doRefund(Payment $payment, ?float $amount = null): Payment;
+
+    /**
+     * Protected abstract method for canceling a payment.
+     * Child classes implement this with actual logic.
+     */
+    abstract protected function doCancel(Payment $payment, ?string $reason = null): Payment;
+
+    /*
+    |--------------------------------------------------------------------------
+    | Processor Identity
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Get the processor name.
+     */
+    abstract public function getName(): string;
+
+    /**
+     * Get the default currency for this processor.
+     * Returns the global currency config by default, but can be overridden
+     * by processors that require a specific currency (e.g., Slickpay uses DZD).
+     *
+     * @return string
+     */
+    public function getCurrency(): string
+    {
+        return Config::get('payable.currency', 'USD');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Feature Support Checks
+    |--------------------------------------------------------------------------
+    */
+
     /**
      * Check if the processor supports redirect-based payments.
+     */
+    abstract public function supportsRedirects(): bool;
+
+    /**
+     * Check if the processor supports immediate payments.
+     */
+    abstract public function supportsImmediatePayments(): bool;
+
+    /**
+     * Check if the processor supports payment cancellation.
+     */
+    abstract public function supportsCancellation(): bool;
+
+    /**
+     * Check if the processor supports refunds.
+     */
+    abstract public function supportsRefunds(): bool;
+
+    /**
+     * Check if the processor supports multiple currencies.
+     * Defaults to false - processors only support their default currency.
      *
      * @return bool
      */
-    public function supportsRedirects(): bool
+    public function supportsMultipleCurrencies(): bool
     {
         return false;
     }
 
     /**
-     * Check if the processor supports immediate payments.
-     *
-     * @return bool
+     * Check if this is an offline processor.
      */
-    public function supportsImmediatePayments(): bool
+    abstract public function isOffline(): bool;
+
+    /**
+     * Check if the processor completes payments immediately after creation.
+     * When true, the payment will be marked as paid and PaymentCompleted event
+     * will be fired right after PaymentCreated event in the process() method.
+     */
+    public function completesImmediately(): bool
     {
-        return true;
+        return false; // Most processors require external confirmation
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Configuration & Metadata
+    |--------------------------------------------------------------------------
+    */
 
     /**
      * Get the processor's supported features.
-     *
-     * @return array
      */
     public function getSupportedFeatures(): array
     {
         return [
             'immediate_payments' => $this->supportsImmediatePayments(),
             'redirect_payments' => $this->supportsRedirects(),
-            'refunds' => true,
+            'refunds' => $this->supportsRefunds(),
+            'cancellation' => $this->supportsCancellation(),
             'webhooks' => true,
         ];
     }
 
     /**
      * Validate payment options for this processor.
-     *
-     * @param  array  $options
-     * @return bool
      */
     public function validateOptions(array $options): bool
     {
@@ -126,47 +303,72 @@ abstract class BaseProcessor implements PaymentProcessor
 
     /**
      * Get the processor's configuration requirements.
-     *
-     * @return array
      */
     public function getConfigurationRequirements(): array
     {
         return [];
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Protected Helper Methods
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Process payment without firing events.
+     * Used internally by process() and doCreateRedirect() implementations.
+     */
+    protected function processPaymentWithoutEvents(Payable $payable, Payer $payer, float $amount, array $options = []): Payment
+    {
+        $this->validatePayable($payable);
+        $this->validatePayer($payer);
+        $this->validateAmount($amount);
+        $this->validateCurrency($options);
+
+        // Create payment without firing event
+        $payment = $this->createPayment($payable, $payer, $amount, $options);
+
+        // Delegate to child implementation for processor-specific logic
+        $payment = $this->doProcess($payment, $payable, $payer, $amount, $options);
+
+        return $payment;
+    }
+
     /**
      * Create a new payment record.
-     *
-     * @param  Payable  $payable
-     * @param  Payer  $payer
-     * @param  float  $amount
-     * @param  array  $options
-     * @return Payment
      */
     protected function createPayment(Payable $payable, Payer $payer, float $amount, array $options = []): Payment
     {
         $paymentClass = Config::get('payable.models.payment');
-        
-        return $paymentClass::create([
+        $payment = $paymentClass::create([
             'payer_type' => $payer->getMorphClass(),
             'payer_id' => $payer->getKey(),
             'payable_type' => $payable->getMorphClass(),
             'payable_id' => $payable->getKey(),
             'amount' => $amount,
-            'currency' => $options['currency'] ?? Config::get('payable.currency', 'USD'),
-            'status' => Config::get('payable.statuses.pending', 'pending'),
+            'currency' => $options['currency'] ?? $this->getCurrency(),
+            'status' => PaymentStatus::pending(),
             'processor' => $this->getName(),
             'reference' => $options['reference'] ?? null,
             'metadata' => $options['metadata'] ?? null,
             'notes' => $options['notes'] ?? null,
         ]);
+
+        return $payment;
+    }
+
+    /**
+     * Get the processor name for event configuration checking.
+     */
+    protected function getProcessorNameForEvents(): ?string
+    {
+        return $this->getName();
     }
 
     /**
      * Validate the payment amount.
      *
-     * @param  float  $amount
-     * @return void
      * @throws PaymentException
      */
     protected function validateAmount(float $amount): void
@@ -179,13 +381,11 @@ abstract class BaseProcessor implements PaymentProcessor
     /**
      * Validate the payer.
      *
-     * @param  Payer  $payer
-     * @return void
      * @throws PaymentException
      */
     protected function validatePayer(Payer $payer): void
     {
-        if (!$payer->canMakePayments()) {
+        if (! $payer->canMakePayments()) {
             throw new PaymentException('Payer is not authorized to make payments.');
         }
     }
@@ -193,18 +393,50 @@ abstract class BaseProcessor implements PaymentProcessor
     /**
      * Validate the payable item.
      *
-     * @param  Payable  $payable
-     * @return void
      * @throws PaymentException
      */
     protected function validatePayable(Payable $payable): void
     {
-        if (!$payable->isPayableActive()) {
+        if (! $payable->isPayableActive()) {
             throw new PaymentException('Payable item is not active.');
         }
 
-        if (!$payable->requiresPayment()) {
+        if (! $payable->requiresPayment()) {
             throw new PaymentException('Payable item does not require payment.');
+        }
+    }
+
+    /**
+     * Validate the currency for this processor.
+     * If the processor doesn't support multiple currencies and a different
+     * currency is provided, throws an exception.
+     *
+     * @param  array  $options
+     * @return void
+     * @throws PaymentException
+     */
+    protected function validateCurrency(array $options): void
+    {
+        // If no currency is specified, validation passes (will use processor default)
+        if (!isset($options['currency'])) {
+            return;
+        }
+
+        $requestedCurrency = strtoupper($options['currency']);
+        $processorCurrency = strtoupper($this->getCurrency());
+
+        // If processor supports multiple currencies, any currency is allowed
+        if ($this->supportsMultipleCurrencies()) {
+            return;
+        }
+
+        // If processor doesn't support multiple currencies, only allow its default currency
+        if ($requestedCurrency !== $processorCurrency) {
+            throw new PaymentException(
+                "Processor '{$this->getName()}' only supports currency '{$processorCurrency}'. " .
+                "Currency '{$requestedCurrency}' is not supported. " .
+                "Either remove the currency option to use the default, or use a processor that supports multiple currencies."
+            );
         }
     }
 }

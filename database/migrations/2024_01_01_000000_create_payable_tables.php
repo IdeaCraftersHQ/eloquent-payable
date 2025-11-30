@@ -38,6 +38,7 @@ class CreatePayableTables extends Migration
             $table->index('processor', 'idx_processor');
             $table->index('reference', 'idx_reference');
             $table->index('paid_at', 'idx_paid_at');
+            $table->index('failed_at', 'idx_failed_at');
             $table->index('created_at', 'idx_created_at');
         });
     }

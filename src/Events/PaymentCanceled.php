@@ -7,17 +7,16 @@ use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
 /**
- * Payment Created Event
+ * Payment Canceled Event
  *
- * This event is automatically fired by payment processors when a payment is created.
+ * This event is automatically fired when a payment is marked as canceled.
  * Do not fire this event directly. It is managed by the library through:
- * - BaseProcessor::process()
- * - BaseProcessor::createRedirect()
+ * - PaymentLifecycle::markAsCanceled()
  *
- * Listen to this event to handle payment creation:
- * Event::listen(PaymentCreated::class, function ($event) { ... });
+ * Listen to this event to handle payment cancellations:
+ * Event::listen(PaymentCanceled::class, function ($event) { ... });
  */
-class PaymentCreated
+class PaymentCanceled
 {
     use Dispatchable, SerializesModels;
 
@@ -29,22 +28,13 @@ class PaymentCreated
     public $payment;
 
     /**
-     * Whether this is an offline payment.
-     *
-     * @var bool
-     */
-    public $isOffline;
-
-    /**
      * Create a new event instance.
      *
      * @param  Payment  $payment
-     * @param  bool  $isOffline
      * @return void
      */
-    public function __construct(Payment $payment, bool $isOffline = false)
+    public function __construct(Payment $payment)
     {
         $this->payment = $payment;
-        $this->isOffline = $isOffline;
     }
 }

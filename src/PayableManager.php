@@ -8,6 +8,7 @@ use Ideacrafters\EloquentPayable\Contracts\Payable;
 use Ideacrafters\EloquentPayable\Contracts\Payer;
 use Ideacrafters\EloquentPayable\Contracts\PaymentRedirect;
 use Ideacrafters\EloquentPayable\Exceptions\PaymentException;
+use Ideacrafters\EloquentPayable\Processors\ProcessorNames;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
@@ -35,7 +36,7 @@ class PayableManager
     public function __construct()
     {
         $this->loadProcessors();
-        $this->defaultProcessor = Config::get('payable.default_processor', 'stripe');
+        $this->defaultProcessor = Config::get('payable.default_processor', ProcessorNames::STRIPE);
     }
 
     /**
@@ -65,7 +66,7 @@ class PayableManager
      */
     public function processOffline(Payable $payable, Payer $payer, float $amount, array $options = []): Payment
     {
-        $options['processor'] = 'offline';
+        $options['processor'] = ProcessorNames::OFFLINE;
         
         return $this->process($payable, $payer, $amount, $options);
     }
@@ -82,6 +83,20 @@ class PayableManager
         $processor = $payment->getProcessor();
         
         return $processor->refund($payment, $amount);
+    }
+
+    /**
+     * Cancel a payment.
+     *
+     * @param  Payment  $payment
+     * @param  string|null  $reason
+     * @return Payment
+     */
+    public function cancel(Payment $payment, ?string $reason = null): Payment
+    {
+        $processor = $payment->getProcessor();
+        
+        return $processor->cancel($payment, $reason);
     }
 
     /**
@@ -162,9 +177,6 @@ class PayableManager
     {
         $processor = $this->getProcessor($options['processor'] ?? null);
         
-        if (!$processor->supportsRedirects()) {
-            throw new PaymentException('Processor does not support redirect payments.');
-        }
         
         return $processor->createRedirect($payable, $payer, $amount, $options);
     }
@@ -306,6 +318,16 @@ class PayableManager
     }
 
     /**
+     * Get all canceled payments.
+     *
+     * @return Collection
+     */
+    public function getCanceledPayments(): Collection
+    {
+        return Payment::canceled()->get();
+    }
+
+    /**
      * Get all offline payments.
      *
      * @return Collection
@@ -350,7 +372,8 @@ class PayableManager
                 'completed' => Payment::completed()->count(),
                 'pending' => Payment::pending()->count(),
                 'failed' => Payment::failed()->count(),
-                'offline' => Payment::offline()->count(),
+                'canceled' => Payment::canceled()->count(),
+                ProcessorNames::OFFLINE => Payment::offline()->count(),
                 'total_amount' => Payment::completed()->sum('amount'),
                 'refunded_amount' => Payment::whereNotNull('refunded_amount')->sum('refunded_amount'),
                 'today' => Payment::today()->count(),
@@ -377,6 +400,7 @@ class PayableManager
                     'completed' => Payment::where('processor', $name)->completed()->count(),
                     'pending' => Payment::where('processor', $name)->pending()->count(),
                     'failed' => Payment::where('processor', $name)->failed()->count(),
+                    'canceled' => Payment::where('processor', $name)->canceled()->count(),
                     'total_amount' => Payment::where('processor', $name)->completed()->sum('amount'),
                 ];
             }
@@ -407,6 +431,18 @@ class PayableManager
     public function markAsFailed(Payment $payment, ?string $reason = null): void
     {
         $payment->markAsFailed($reason);
+    }
+
+    /**
+     * Mark a payment as canceled.
+     *
+     * @param  Payment  $payment
+     * @param  string|null  $reason
+     * @return void
+     */
+    public function markAsCanceled(Payment $payment, ?string $reason = null): void
+    {
+        $payment->markAsCanceled($reason);
     }
 
     /**
@@ -454,6 +490,17 @@ class PayableManager
     }
 
     /**
+     * Check if a payment is canceled.
+     *
+     * @param  Payment  $payment
+     * @return bool
+     */
+    public function isCanceled(Payment $payment): bool
+    {
+        return $payment->isCanceled();
+    }
+
+    /**
      * Check if a payment is offline.
      *
      * @param  Payment  $payment
@@ -485,7 +532,7 @@ class PayableManager
         $prefix = Config::get('payable.routes.prefix', 'payable');
         
         return [
-            'stripe' => url("{$prefix}/webhooks/stripe"),
+            ProcessorNames::STRIPE => url("{$prefix}/webhooks/stripe"),
             'generic' => url("{$prefix}/webhooks/{processor}"),
         ];
     }

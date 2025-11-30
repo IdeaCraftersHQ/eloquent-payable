@@ -1,5 +1,7 @@
 <?php
 
+use Ideacrafters\EloquentPayable\Processors\ProcessorNames;
+
 return [
     /*
     |--------------------------------------------------------------------------
@@ -10,7 +12,7 @@ return [
     | when no processor is explicitly specified in the payment request.
     |
     */
-    'default_processor' => env('PAYABLE_PROCESSOR', 'stripe'),
+    'default_processor' => env('PAYABLE_PROCESSOR', ProcessorNames::STRIPE),
 
     /*
     |--------------------------------------------------------------------------
@@ -22,10 +24,10 @@ return [
     |
     */
     'processors' => [
-        'stripe' => \Ideacrafters\EloquentPayable\Processors\StripeProcessor::class,
-        'slickpay' => \Ideacrafters\EloquentPayable\Processors\SlickpayProcessor::class,
-        'offline' => \Ideacrafters\EloquentPayable\Processors\OfflineProcessor::class,
-        'none' => \Ideacrafters\EloquentPayable\Processors\NoProcessor::class,
+        ProcessorNames::STRIPE => \Ideacrafters\EloquentPayable\Processors\StripeProcessor::class,
+        ProcessorNames::SLICKPAY => \Ideacrafters\EloquentPayable\Processors\SlickpayProcessor::class,
+        ProcessorNames::OFFLINE => \Ideacrafters\EloquentPayable\Processors\OfflineProcessor::class,
+        ProcessorNames::NONE => \Ideacrafters\EloquentPayable\Processors\NoProcessor::class,
     ],
 
     /*
@@ -99,6 +101,7 @@ return [
         'failed' => 'failed',
         'refunded' => 'refunded',
         'partially_refunded' => 'partially_refunded',
+        'canceled' => 'canceled',
     ],
 
     /*
@@ -151,5 +154,25 @@ return [
     'webhooks' => [
         'verify_signature' => env('PAYABLE_VERIFY_WEBHOOK_SIGNATURE', true),
         'timeout' => env('PAYABLE_WEBHOOK_TIMEOUT', 30),
+        'event_idempotency_ttl_days' => env('PAYABLE_WEBHOOK_EVENT_IDEMPOTENCY_TTL_DAYS', 30),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Event Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Here you may configure whether payment events should be emitted.
+    | You can disable events globally or per-processor.
+    |
+    */
+    'events' => [
+        'enabled' => env('PAYABLE_EVENTS_ENABLED', true),
+        'processors' => [
+            // ProcessorNames::STRIPE => false,  // Disable events for Stripe processor
+            // ProcessorNames::SLICKPAY => false, // Disable events for Slickpay processor
+            // ProcessorNames::OFFLINE => false,  // Disable events for Offline processor
+            // ProcessorNames::NONE => false,     // Disable events for No processor
+        ],
     ],
 ];

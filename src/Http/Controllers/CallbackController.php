@@ -23,7 +23,6 @@ class CallbackController extends Controller
         
         if ($payment && $payment->isPending()) {
             $payment->markAsPaid();
-            event(new PaymentCompleted($payment));
         }
 
         return view('payable::callback.success', compact('payment'));
@@ -40,8 +39,14 @@ class CallbackController extends Controller
         $payment = $this->getPaymentFromRequest($request);
         
         if ($payment && $payment->isPending()) {
+            $processor = $payment->getProcessor();
+            
+            // If processor supports cancellation, mark as canceled; otherwise mark as failed
+            if ($processor->supportsCancellation()) {
+                $payment->markAsCanceled('Payment was cancelled by user');
+            } else {
             $payment->markAsFailed('Payment was cancelled by user');
-            event(new PaymentFailed($payment));
+            }
         }
 
         return view('payable::callback.cancel', compact('payment'));
@@ -59,7 +64,6 @@ class CallbackController extends Controller
         
         if ($payment && $payment->isPending()) {
             $payment->markAsFailed('Payment failed');
-            event(new PaymentFailed($payment));
         }
 
         return view('payable::callback.failed', compact('payment'));

@@ -3,20 +3,22 @@
 namespace Ideacrafters\EloquentPayable\Events;
 
 use Ideacrafters\EloquentPayable\Models\Payment;
-use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
-class OfflinePaymentConfirmed
+/**
+ * Offline Payment Confirmed Event (Deprecated)
+ *
+ * @deprecated Use PaymentCompleted instead.
+ * This event is deprecated and will be removed in a future version.
+ * Offline payments that are confirmed via markAsPaid() fire PaymentCompleted event.
+ *
+ * This event is automatically fired when an offline payment is marked as completed.
+ * Do not fire this event directly. It is managed by the library through:
+ * - PaymentLifecycle::markAsPaid() (for offline payments)
+ *
+ * @see PaymentCompleted
+ */
+class OfflinePaymentConfirmed extends PaymentCompleted
 {
-    use Dispatchable, SerializesModels;
-
-    /**
-     * The payment instance.
-     *
-     * @var Payment
-     */
-    public $payment;
-
     /**
      * Create a new event instance.
      *
@@ -25,6 +27,12 @@ class OfflinePaymentConfirmed
      */
     public function __construct(Payment $payment)
     {
-        $this->payment = $payment;
+        parent::__construct($payment);
+        
+        @trigger_error(
+            'OfflinePaymentConfirmed is deprecated. Use PaymentCompleted instead.',
+            E_USER_DEPRECATED
+        );
     }
 }
+

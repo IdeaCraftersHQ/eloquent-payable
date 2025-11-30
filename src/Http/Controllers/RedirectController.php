@@ -32,7 +32,7 @@ class RedirectController extends Controller
             $completedPayment = Payable::completeRedirect($payment, $request->all());
             
             if ($completedPayment->isCompleted()) {
-                event(new PaymentCompleted($completedPayment));
+                // PaymentCompleted event is already fired by Payment::markAsPaid()
                 
                 return $this->handleSuccessfulPayment($completedPayment, $request);
             } else {
@@ -59,8 +59,8 @@ class RedirectController extends Controller
 
         // Mark payment as failed if it's still pending
         if ($payment->isPending()) {
+            // PaymentFailed event is already fired by Payment::markAsFailed()
             $payment->markAsFailed('Payment was cancelled by user');
-            event(new PaymentFailed($payment));
         }
 
         return $this->handleCancelledPayment($payment, $request);
@@ -82,8 +82,8 @@ class RedirectController extends Controller
 
         // Mark payment as failed if it's still pending
         if ($payment->isPending()) {
+            // PaymentFailed event is already fired by Payment::markAsFailed()
             $payment->markAsFailed('Payment failed');
-            event(new PaymentFailed($payment));
         }
 
         return $this->handleFailedPayment($payment, 'Payment failed', $request);

@@ -24,7 +24,31 @@ trait HasPayments
             return (string) $this->name;
         }
 
-        return property_exists($this, 'full_name') ? (string) $this->full_name : null;
+        if (property_exists($this, 'full_name') && $this->full_name) {
+            return (string) $this->full_name;
+        }
+
+        if (property_exists($this, 'first_name') && $this->first_name && property_exists($this, 'last_name') && $this->last_name) {
+            return (string) $this->first_name . ' ' . $this->last_name;
+        }
+
+        return null;
+    }
+
+    /**
+     * Default: Use model's `first_name` property when present.
+     */
+    public function getFirstName(): ?string
+    {
+        return property_exists($this, 'first_name') ? ($this->first_name ? (string) $this->first_name : null) : null;
+    }
+
+    /**
+     * Default: Use model's `last_name` property when present.
+     */
+    public function getLastName(): ?string
+    {
+        return property_exists($this, 'last_name') ? ($this->last_name ? (string) $this->last_name : null) : null;
     }
 
     /**
@@ -54,6 +78,49 @@ trait HasPayments
     }
 
     /**
+     * Default: Format billing address as string.
+     * First checks if `billing_address` property exists and is a string (use it directly).
+     * Otherwise, if `billing_address` is an array, formats it.
+     */
+    public function getBillingAddressAsString(): string
+    {
+        // Check if billing_address property exists and is a string
+        if (property_exists($this, 'billing_address') && is_string($this->billing_address)) {
+            return (string) $this->billing_address;
+        }
+
+        // Otherwise, format from billing_address array
+        $billingAddress = $this->getBillingAddress();
+
+        if ($billingAddress && is_array($billingAddress)) {
+            $addressParts = [];
+
+            if (isset($billingAddress['street'])) {
+                $addressParts[] = $billingAddress['street'];
+            }
+
+            if (isset($billingAddress['city'])) {
+                $addressParts[] = $billingAddress['city'];
+            }
+
+            if (isset($billingAddress['state'])) {
+                $addressParts[] = $billingAddress['state'];
+            }
+
+            if (isset($billingAddress['country'])) {
+                $addressParts[] = $billingAddress['country'];
+            }
+
+            $addressString = implode(', ', $addressParts);
+            if (!empty($addressString)) {
+                return $addressString;
+            }
+        }
+
+        return '';
+    }
+
+    /**
      * Default: Use model's `shipping_address` array when present.
      */
     public function getShippingAddress(): ?array
@@ -80,17 +147,28 @@ trait HasPayments
     }
 
     /**
-     * Default: Use model's `phone`/`phone_number` when present.
+     * Default: Use model's `phone_number`/`phoneNumber`/`phonenumber`/`phone` when present.
      */
     public function getPhoneNumber(): ?string
     {
+        
+        if (property_exists($this, 'phone_number') && $this->phone_number) {
+            return (string) $this->phone_number;
+        }
+
+        if (property_exists($this, 'phoneNumber') && $this->phoneNumber) {
+            return (string) $this->phoneNumber;
+        }
+
+        if (property_exists($this, 'phonenumber') && $this->phonenumber) {
+            return (string) $this->phonenumber;
+        }
+
         if (property_exists($this, 'phone') && $this->phone) {
             return (string) $this->phone;
         }
 
-        return property_exists($this, 'phone_number') && $this->phone_number
-            ? (string) $this->phone_number
-            : null;
+        return null;
     }
 
     /**
@@ -270,3 +348,4 @@ trait HasPayments
             ->exists();
     }
 }
+

@@ -2,7 +2,11 @@
 
 namespace Ideacrafters\EloquentPayable\Tests\Unit;
 
+require_once __DIR__ . '/TestCaseHelpers.php';
+
 use Ideacrafters\EloquentPayable\Tests\TestCase;
+use Ideacrafters\EloquentPayable\Tests\Unit\TestInvoice;
+use Ideacrafters\EloquentPayable\Tests\Unit\TestUser;
 use Ideacrafters\EloquentPayable\Facades\Payable;
 use Ideacrafters\EloquentPayable\Models\Payment;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -11,13 +15,32 @@ class PayableFacadeTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Create test tables
+        \Illuminate\Support\Facades\Schema::create('test_invoices', function ($table) {
+            $table->id();
+            $table->decimal('amount', 10, 2);
+            $table->timestamps();
+        });
+
+        \Illuminate\Support\Facades\Schema::create('test_payers', function ($table) {
+            $table->id();
+            $table->timestamps();
+        });
+    }
+
     /** @test */
     public function facade_can_process_payments()
     {
         $invoice = new TestInvoice(['amount' => 100.00]);
+        $invoice->save();
         $user = new TestUser(['id' => 1]);
+        $user->save();
 
-        $payment = Payable::process($invoice, $user, 100.00);
+        $payment = Payable::process($invoice, $user, 100.00, ['processor' => 'none']);
 
         $this->assertEquals('completed', $payment->status);
         $this->assertEquals(100.00, $payment->amount);
@@ -27,7 +50,9 @@ class PayableFacadeTest extends TestCase
     public function facade_can_process_offline_payments()
     {
         $invoice = new TestInvoice(['amount' => 100.00]);
+        $invoice->save();
         $user = new TestUser(['id' => 1]);
+        $user->save();
 
         $payment = Payable::processOffline($invoice, $user, 100.00);
 
@@ -140,14 +165,4 @@ class PayableFacadeTest extends TestCase
         $this->assertTrue(Payable::isProcessorSupported('none'));
         $this->assertFalse(Payable::isProcessorSupported('nonexistent'));
     }
-}
-
-class TestInvoice extends \Illuminate\Database\Eloquent\Model
-{
-    protected $fillable = ['amount'];
-}
-
-class TestUser extends \Illuminate\Database\Eloquent\Model
-{
-    protected $fillable = ['id'];
 }

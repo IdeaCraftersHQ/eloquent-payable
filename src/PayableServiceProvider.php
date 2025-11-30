@@ -4,9 +4,13 @@ namespace Ideacrafters\EloquentPayable;
 
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Config;
 use Ideacrafters\EloquentPayable\Http\Controllers\WebhookController;
 use Ideacrafters\EloquentPayable\Http\Controllers\CallbackController;
 use Ideacrafters\EloquentPayable\Http\Controllers\RedirectController;
+use Ideacrafters\EloquentPayable\Processors\ProcessorNames;
+use Ideacrafters\EloquentPayable\Processors\StripeWebhookHandler;
 
 class PayableServiceProvider extends ServiceProvider
 {
@@ -20,6 +24,11 @@ class PayableServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(
             __DIR__.'/../config/payable.php', 'payable'
         );
+
+        // Register Stripe webhook handler (can be rebound by users in their service provider)
+        $this->app->singleton(StripeWebhookHandler::class, function ($app) {
+            return new StripeWebhookHandler();
+        });
 
         $this->app->singleton(\Ideacrafters\EloquentPayable\Processors\StripeProcessor::class);
         $this->app->singleton(\Ideacrafters\EloquentPayable\Processors\OfflineProcessor::class);
@@ -46,6 +55,9 @@ class PayableServiceProvider extends ServiceProvider
         ], 'migrations');
 
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+
+        // Validate events.processors configuration
+        $this->validateEventsProcessorsConfig();
 
         if (config('payable.routes.enabled', true)) {
             $this->registerRoutes();
@@ -94,5 +106,45 @@ class PayableServiceProvider extends ServiceProvider
                 Route::get('/redirect/failed', [RedirectController::class, 'failed'])
                     ->name('payable.redirect.failed');
             });
+    }
+
+    /**
+     * Validate that processor names in events.processors are registered in processors config.
+     * 
+     * This ensures that if users want to disable events for a processor, they must first
+     * register that processor in the 'processors' config. Custom processors should be
+     * registered before configuring event settings.
+     *
+     * @return void
+     */
+    protected function validateEventsProcessorsConfig(): void
+    {
+        $eventsProcessors = Config::get('payable.events.processors', []);
+        $registeredProcessors = array_keys(Config::get('payable.processors', []));
+
+        if (empty($eventsProcessors)) {
+            return; // No events.processors configured, nothing to validate
+        }
+
+        $invalidProcessors = [];
+
+        foreach ($eventsProcessors as $processorName => $enabled) {
+            if (!in_array($processorName, $registeredProcessors, true)) {
+                $invalidProcessors[] = $processorName;
+            }
+        }
+
+        if (!empty($invalidProcessors)) {
+            $validProcessorNames = implode(', ', $registeredProcessors);
+            $invalidProcessorNames = implode(', ', $invalidProcessors);
+            
+            Log::warning(
+                "Eloquent Payable: Invalid processor names found in 'payable.events.processors' config. " .
+                "The following processors are not registered in 'payable.processors': {$invalidProcessorNames}. " .
+                "Registered processors are: {$validProcessorNames}. " .
+                "Please register your custom processors in 'payable.processors' before configuring event settings. " .
+                "For built-in processors, use ProcessorNames constants (e.g., ProcessorNames::STRIPE) to avoid typos."
+            );
+        }
     }
 }

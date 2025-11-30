@@ -33,6 +33,20 @@ interface Payer
     public function getName(): ?string;
 
     /**
+     * Get the payer's first name.
+     *
+     * @return string|null
+     */
+    public function getFirstName(): ?string;
+
+    /**
+     * Get the payer's last name.
+     *
+     * @return string|null
+     */
+    public function getLastName(): ?string;
+
+    /**
      * Check if the payer can make payments.
      *
      * @return bool
@@ -52,6 +66,13 @@ interface Payer
      * @return array|null
      */
     public function getBillingAddress(): ?array;
+
+    /**
+     * Get the payer's billing address as a formatted string.
+     *
+     * @return string
+     */
+    public function getBillingAddressAsString(): string;
 
     /**
      * Get the payer's shipping address.

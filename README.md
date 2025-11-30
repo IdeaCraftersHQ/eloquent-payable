@@ -6,6 +6,9 @@
 
 A Laravel package that enables any Eloquent model to accept payments by adding a simple trait. Perfect for invoices, products, subscriptions, fees, donations, and any other payment scenarios.
 
+> **📋 Upgrading?** If you're upgrading from version 1.x, please check the [Migration Guide](MIGRATION-GUIDE.md) for breaking changes and required updates.  
+> **📝 Changelog:** See [CHANGELOG.md](CHANGELOG.md) for a complete list of changes in version 2.0.0.
+
 ## Features
 
 - 🚀 **One-line integration** - Add payment capabilities to any model with a single trait
@@ -487,15 +490,27 @@ use Ideacrafters\EloquentPayable\Events\PaymentCreated;
 use Ideacrafters\EloquentPayable\Events\PaymentCompleted;
 use Ideacrafters\EloquentPayable\Events\PaymentFailed;
 use Ideacrafters\EloquentPayable\Events\PaymentRefunded;
-use Ideacrafters\EloquentPayable\Events\OfflinePaymentCreated;
-use Ideacrafters\EloquentPayable\Events\OfflinePaymentConfirmed;
 
 // Listen to events
 Event::listen(PaymentCompleted::class, function ($event) {
     // Send confirmation email
     Mail::to($event->payment->payer)->send(new PaymentConfirmation($event->payment));
 });
+
+// For offline payments, check the isOffline flag
+Event::listen(PaymentCreated::class, function ($event) {
+    if ($event->isOffline) {
+        // Handle offline payment creation
+    }
+});
 ```
+
+**Deprecated Events:**
+
+The following events are deprecated and will be removed in a future version. Use the main events with flags instead:
+
+- `OfflinePaymentCreated` - Use `PaymentCreated` with `isOffline` flag instead
+- `OfflinePaymentConfirmed` - Use `PaymentCompleted` instead (offline payments fire `PaymentCompleted` when marked as paid)
 
 ## Webhooks
 
