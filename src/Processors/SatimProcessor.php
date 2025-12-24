@@ -63,7 +63,7 @@ class SatimProcessor extends BaseProcessor
             }
 
             $response = $satimRequest->register();
-            
+
             // Convert response object to associative array
             $responseArray = is_array($response) ? $response : json_decode(json_encode($response), true);
 

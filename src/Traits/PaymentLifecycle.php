@@ -221,6 +221,15 @@ trait PaymentLifecycle
         return $this->status === PaymentStatus::processing();
     }
 
+    protected function isNotFinalStatus(): bool
+    {
+        return !in_array($this->status, [
+            PaymentStatus::completed(),
+            PaymentStatus::failed(),
+            PaymentStatus::canceled(),
+        ]);
+    }
+
     /**
      * Check if the payment is refunded.
      *

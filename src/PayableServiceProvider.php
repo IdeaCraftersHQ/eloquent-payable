@@ -55,6 +55,14 @@ class PayableServiceProvider extends ServiceProvider
             __DIR__.'/../database/migrations' => database_path('migrations'),
         ], 'migrations');
 
+        // Register view namespace
+        $this->loadViewsFrom(__DIR__.'/../resources/views', 'payable');
+        
+        // Allow users to publish views
+        $this->publishes([
+            __DIR__.'/../resources/views' => resource_path('views/vendor/payable'),
+        ], 'views');
+
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
 
         // Validate events.processors configuration

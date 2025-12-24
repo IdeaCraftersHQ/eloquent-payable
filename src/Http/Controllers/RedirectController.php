@@ -58,7 +58,7 @@ class RedirectController extends Controller
         }
 
         // Mark payment as failed if it's still pending
-        if ($payment->isPending()) {
+        if ($payment->isNotFinalStatus()) {
             // PaymentFailed event is already fired by Payment::markAsFailed()
             $payment->markAsFailed('Payment was cancelled by user');
         }
@@ -81,7 +81,7 @@ class RedirectController extends Controller
         }
 
         // Mark payment as failed if it's still pending
-        if ($payment->isPending()) {
+        if ($payment->isNotFinalStatus()) {
             // PaymentFailed event is already fired by Payment::markAsFailed()
             $payment->markAsFailed('Payment failed');
         }
@@ -97,13 +97,13 @@ class RedirectController extends Controller
      */
     protected function getPaymentFromRequest(Request $request): ?Payment
     {
-        $paymentId = $request->get('payment') ?? $request->get('payment_id');
+        $paymentId = $request->get('payment') ?? $request->get('payment_id')??$request->get('orderId');
         
         if (!$paymentId) {
             return null;
         }
 
-        return Payment::find($paymentId);
+        return Payment::where('id', $paymentId)->orWhere('reference', $paymentId)->first();
     }
 
     /**
