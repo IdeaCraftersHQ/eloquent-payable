@@ -63,17 +63,20 @@ class SatimProcessor extends BaseProcessor
             }
 
             $response = $satimRequest->register();
+            
+            // Convert response object to associative array
+            $responseArray = is_array($response) ? $response : json_decode(json_encode($response), true);
 
-            if (! isset($response['formUrl']) || ! isset($response['mdOrder'])) {
+            if (! isset($responseArray['formUrl']) || ! isset($responseArray['mdOrder'])) {
                 throw new PaymentException('Invalid SATIM response: missing formUrl or mdOrder');
             }
 
             $payment->update([
-                'reference' => $response['mdOrder'],
+                'reference' => $responseArray['mdOrder'],
                 'status' => PaymentStatus::processing(),
                 'metadata' => array_merge($payment->metadata ?? [], [
-                    'satim_md_order' => $response['mdOrder'],
-                    'satim_form_url' => $response['formUrl'],
+                    'satim_md_order' => $responseArray['mdOrder'],
+                    'satim_form_url' => $responseArray['formUrl'],
                 ]),
             ]);
 
@@ -340,9 +343,12 @@ class SatimProcessor extends BaseProcessor
 
         try {
             $response = Satim::refund($payment->reference, $this->convertToCents($refundAmount));
+            
+            // Convert response object to associative array
+            $responseArray = is_array($response) ? $response : json_decode(json_encode($response), true);
 
-            if (! $response['success']) {
-                throw new PaymentException('SATIM refund failed: '.($response['message'] ?? 'Unknown error'));
+            if (! ($responseArray['success'] ?? false)) {
+                throw new PaymentException('SATIM refund failed: '.($responseArray['message'] ?? 'Unknown error'));
             }
 
             $totalRefunded = ($payment->refunded_amount ?? 0) + $refundAmount;
@@ -352,7 +358,7 @@ class SatimProcessor extends BaseProcessor
                     'status' => PaymentStatus::refunded(),
                     'refunded_amount' => $totalRefunded,
                     'metadata' => array_merge($payment->metadata ?? [], [
-                        'satim_refund_response' => $response,
+                        'satim_refund_response' => $responseArray,
                     ]),
                 ]);
             } else {
@@ -360,7 +366,7 @@ class SatimProcessor extends BaseProcessor
                     'status' => PaymentStatus::partiallyRefunded(),
                     'refunded_amount' => $totalRefunded,
                     'metadata' => array_merge($payment->metadata ?? [], [
-                        'satim_refund_response' => $response,
+                        'satim_refund_response' => $responseArray,
                     ]),
                 ]);
             }
