@@ -8,7 +8,7 @@ use Ideacrafters\EloquentPayable\Exceptions\PaymentException;
 use Ideacrafters\EloquentPayable\Models\Payment;
 use Ideacrafters\EloquentPayable\Models\PaymentRedirectModel;
 use Ideacrafters\EloquentPayable\PaymentStatus;
-use Ideacrafters\Satim\Facades\Satim;
+use Ideacrafters\SatimLaravel\Facades\Satim;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 
