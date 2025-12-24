@@ -36,7 +36,7 @@ class SatimProcessor extends BaseProcessor
         $failUrl = $options['fail_url'] ?? $this->getDefaultFailUrl();
 
         try {
-            $satimRequest = Satim::amount($amount)
+            $satimRequest = Satim::amount($this->convertToCents($amount))
                 ->returnUrl($successUrl)
                 ->failUrl($failUrl);
 
@@ -339,7 +339,7 @@ class SatimProcessor extends BaseProcessor
         $refundAmount = $amount ?? $payment->amount;
 
         try {
-            $response = Satim::refund($payment->reference, $refundAmount);
+            $response = Satim::refund($payment->reference, $this->convertToCents($refundAmount));
 
             if (! $response['success']) {
                 throw new PaymentException('SATIM refund failed: '.($response['message'] ?? 'Unknown error'));
@@ -369,6 +369,19 @@ class SatimProcessor extends BaseProcessor
         } catch (\Exception $e) {
             throw new PaymentException('Failed to refund SATIM payment: '.$e->getMessage(), 0, $e);
         }
+    }
+
+    /**
+     * Convert amount to cents for SATIM.
+     * SATIM requires amounts in centimes (smallest currency unit).
+     * For DZD: 1 DZD = 100 centimes.
+     *
+     * @param  float  $amount
+     * @return int
+     */
+    protected function convertToCents(float $amount): int
+    {
+        return (int) round($amount * 100);
     }
 
     /**
