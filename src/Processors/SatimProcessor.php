@@ -67,15 +67,15 @@ class SatimProcessor extends BaseProcessor
             // Convert response object to associative array
             $responseArray = is_array($response) ? $response : json_decode(json_encode($response), true);
 
-            if (! isset($responseArray['formUrl']) || ! isset($responseArray['mdOrder'])) {
-                throw new PaymentException('Invalid SATIM response: missing formUrl or mdOrder');
+            if (! isset($responseArray['formUrl']) || ! isset($responseArray['orderId'])) {
+                throw new PaymentException('Invalid SATIM response: missing formUrl or orderId');
             }
 
             $payment->update([
-                'reference' => $responseArray['mdOrder'],
+                'reference' => $responseArray['orderId'],
                 'status' => PaymentStatus::processing(),
                 'metadata' => array_merge($payment->metadata ?? [], [
-                    'satim_md_order' => $responseArray['mdOrder'],
+                    'satim_order_id' => $responseArray['orderId'],
                     'satim_form_url' => $responseArray['formUrl'],
                 ]),
             ]);
@@ -118,7 +118,7 @@ class SatimProcessor extends BaseProcessor
                 redirectSessionId: $payment->reference,
                 redirectExpiresAt: null,
                 redirectMetadata: [
-                    'satim_md_order' => $payment->reference,
+                    'satim_order_id' => $payment->reference,
                     'satim_form_url' => $formUrl,
                 ]
             ),
@@ -135,7 +135,7 @@ class SatimProcessor extends BaseProcessor
     protected function doCompleteRedirect(Payment $payment, array $redirectData = []): Payment
     {
         if (! $payment->reference) {
-            throw new PaymentException('Cannot complete redirect payment without SATIM mdOrder.');
+            throw new PaymentException('Cannot complete redirect payment without SATIM orderId.');
         }
 
         try {
