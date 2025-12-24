@@ -9,12 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - SATIM payment processor integration with redirect-based payments
-- Support for SATIM refunds (full and partial)
+- Support for SATIM refunds
 - SATIM configuration in `config/payable.php` with environment variable support
 - SATIM processor registration in service provider
-
-### Changed
-- Improved transaction consistency in payment completion flow
 
 ---
 
