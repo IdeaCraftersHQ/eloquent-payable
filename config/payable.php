@@ -26,6 +26,7 @@ return [
     'processors' => [
         ProcessorNames::STRIPE => \Ideacrafters\EloquentPayable\Processors\StripeProcessor::class,
         ProcessorNames::SLICKPAY => \Ideacrafters\EloquentPayable\Processors\SlickpayProcessor::class,
+        ProcessorNames::SATIM => \Ideacrafters\EloquentPayable\Processors\SatimProcessor::class,
         ProcessorNames::OFFLINE => \Ideacrafters\EloquentPayable\Processors\OfflineProcessor::class,
         ProcessorNames::NONE => \Ideacrafters\EloquentPayable\Processors\NoProcessor::class,
     ],
@@ -145,6 +146,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | SATIM Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Here you may configure SATIM-specific settings. Make sure to set your
+    | SATIM credentials in your .env file.
+    |
+    | Available languages: fr, en, ar
+    | Currency: 012 (DZD - Algerian Dinar)
+    |
+    */
+    'satim' => [
+        'username' => env('SATIM_USERNAME'),
+        'password' => env('SATIM_PASSWORD'),
+        'terminal_id' => env('SATIM_TERMINAL_ID'),
+        'language' => env('SATIM_LANGUAGE', 'fr'),
+        'currency' => env('SATIM_CURRENCY', '012'),
+        'api_url' => env('SATIM_API_URL', 'https://test.satim.dz/payment/rest'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Webhook Configuration
     |--------------------------------------------------------------------------
     |
@@ -169,8 +191,9 @@ return [
     'events' => [
         'enabled' => env('PAYABLE_EVENTS_ENABLED', true),
         'processors' => [
-            // ProcessorNames::STRIPE => false,  // Disable events for Stripe processor
+            // ProcessorNames::STRIPE => false,   // Disable events for Stripe processor
             // ProcessorNames::SLICKPAY => false, // Disable events for Slickpay processor
+            // ProcessorNames::SATIM => false,    // Disable events for SATIM processor
             // ProcessorNames::OFFLINE => false,  // Disable events for Offline processor
             // ProcessorNames::NONE => false,     // Disable events for No processor
         ],

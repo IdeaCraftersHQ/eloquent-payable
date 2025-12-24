@@ -9,6 +9,7 @@ class ProcessorNames
 {
     public const STRIPE = 'stripe';
     public const SLICKPAY = 'slickpay';
+    public const SATIM = 'satim';
     public const OFFLINE = 'offline';
     public const NONE = 'none';
 
@@ -22,6 +23,7 @@ class ProcessorNames
         return [
             self::STRIPE,
             self::SLICKPAY,
+            self::SATIM,
             self::OFFLINE,
             self::NONE,
         ];

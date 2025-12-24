@@ -33,6 +33,7 @@ class PayableServiceProvider extends ServiceProvider
         $this->app->singleton(\Ideacrafters\EloquentPayable\Processors\StripeProcessor::class);
         $this->app->singleton(\Ideacrafters\EloquentPayable\Processors\OfflineProcessor::class);
         $this->app->singleton(\Ideacrafters\EloquentPayable\Processors\NoProcessor::class);
+        $this->app->singleton(\Ideacrafters\EloquentPayable\Processors\SatimProcessor::class);
         
         $this->app->singleton('payable', function ($app) {
             return new \Ideacrafters\EloquentPayable\PayableManager();
