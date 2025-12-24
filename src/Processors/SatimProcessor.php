@@ -10,6 +10,7 @@ use Ideacrafters\EloquentPayable\Models\PaymentRedirectModel;
 use Ideacrafters\EloquentPayable\PaymentStatus;
 use Ideacrafters\Satim\Facades\Satim;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\DB;
 
 class SatimProcessor extends BaseProcessor
 {
@@ -136,29 +137,32 @@ class SatimProcessor extends BaseProcessor
 
         try {
             $response = Satim::confirm($payment->reference);
+            $statusCode = $response->getOrderStatus() ?? null;
 
-            if ($response->isPaid()) {
-                $payment->markAsPaid();
-            } else {
-                // Check status codes for specific failures
-                $statusCode = $response->getOrderStatus() ?? null;
-
-                if (in_array($statusCode, [3, 6])) {
-                    // 3 = Authorization cancelled, 6 = Authorization declined
-                    $payment->markAsFailed('Payment was declined or cancelled by SATIM');
-                } else {
-                    // Keep as processing if not completed yet
-                    $payment->update(['status' => PaymentStatus::processing()]);
-                }
-            }
-
-            // Store additional response data in metadata
-            $payment->update([
-                'metadata' => array_merge($payment->metadata ?? [], [
-                    'satim_order_status' => $statusCode ?? null,
-                    'satim_confirmation_response' => $response->toArray(),
-                ]),
+            // Prepare metadata
+            $metadata = array_merge($payment->metadata ?? [], [
+                'satim_order_status' => $statusCode,
+                'satim_confirmation_response' => $response->toArray(),
             ]);
+
+            // Wrap status and metadata updates in a transaction for consistency
+            DB::transaction(function () use ($payment, $response, $statusCode, $metadata) {
+                // Update status
+                if ($response->isPaid()) {
+                    $payment->markAsPaid();
+                } else {
+                    if (in_array($statusCode, [3, 6])) {
+                        // 3 = Authorization cancelled, 6 = Authorization declined
+                        $payment->markAsFailed('Payment was declined or cancelled by SATIM');
+                    } else {
+                        // Keep as processing if not completed yet
+                        $payment->update(['status' => PaymentStatus::processing()]);
+                    }
+                }
+
+                // Update metadata (always updated, so do it once after status update)
+                $payment->update(['metadata' => $metadata]);
+            });
 
             return $payment;
         } catch (\Exception $e) {
