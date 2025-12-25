@@ -10,6 +10,7 @@ use Ideacrafters\EloquentPayable\Events\PaymentFailed;
 use Ideacrafters\EloquentPayable\Exceptions\PaymentException;
 use Ideacrafters\EloquentPayable\PaymentStatus;
 use Ideacrafters\EloquentPayable\Processors\ProcessorNames;
+use Illuminate\Database\Eloquent\Builder;
 
 trait PaymentLifecycle
 {
@@ -306,6 +307,17 @@ trait PaymentLifecycle
     public function scopeOffline($query)
     {
         return $query->where('processor', ProcessorNames::OFFLINE);
+    }
+
+    /**
+     * Scope a query to only include online payments.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeOnline(Builder $query): Builder
+    {
+        return $query->whereIn('processor', [ProcessorNames::SATIM, ProcessorNames::SLICKPAY]);
     }
 
     /**
