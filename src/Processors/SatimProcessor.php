@@ -41,7 +41,7 @@ class SatimProcessor extends BaseProcessor
                 ->failUrl($failUrl);
 
             // Add optional fields if provided
-            if (isset($options['order_number'])) {
+            if (isset($options['order_number'] )) {
                 $satimRequest->orderNumber($options['order_number']);
             }
 
@@ -140,12 +140,12 @@ class SatimProcessor extends BaseProcessor
 
         try {
             $response = Satim::confirm($payment->reference);
-            $statusCode = $response->getOrderStatus() ?? null;
+            $statusCode = $response->orderStatus ?? null;
 
             // Prepare metadata
             $metadata = array_merge($payment->metadata ?? [], [
                 'satim_order_status' => $statusCode,
-                'satim_confirmation_response' => $response->toArray(),
+                'satim_confirmation_response' => json_decode(json_encode($response), true),
             ]);
 
             // Wrap status and metadata updates in a transaction for consistency
