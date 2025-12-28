@@ -77,6 +77,12 @@ class SatimProcessor extends BaseProcessor
                 'metadata' => array_merge($payment->metadata ?? [], [
                     'satim_order_id' => $responseArray['orderId'],
                     'satim_form_url' => $responseArray['formUrl'],
+                    'order_number' => $options['orderNumber'],
+                    'order_status' => $responseArray['OrderStatus'],
+                    'error_code' => $responseArray['ErrorCode'],
+                    'approval_code' => $responseArray['approvalCode'],
+                    'response_code' => $responseArray['respCode'],
+                    'response_code_description' => $responseArray['respCode_desc'],
                 ]),
             ]);
 
