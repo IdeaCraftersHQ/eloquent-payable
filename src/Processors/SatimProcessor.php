@@ -75,14 +75,9 @@ class SatimProcessor extends BaseProcessor
                 'reference' => $responseArray['orderId'],
                 'status' => PaymentStatus::processing(),
                 'metadata' => array_merge($payment->metadata ?? [], [
-                    'satim_order_id' => $responseArray['orderId'],
-                    'satim_form_url' => $responseArray['formUrl'],
-                    'order_number' => $options['orderNumber'],
-                    'order_status' => $responseArray['OrderStatus'],
-                    'error_code' => $responseArray['ErrorCode'],
-                    'approval_code' => $responseArray['approvalCode'],
-                    'response_code' => $responseArray['respCode'],
-                    'response_code_description' => $responseArray['respCode_desc'],
+                    'satim_order_id' => $responseArray['orderId']??null,
+                    'satim_form_url' => $responseArray['formUrl']??null,
+                
                 ]),
             ]);
 
@@ -147,11 +142,21 @@ class SatimProcessor extends BaseProcessor
         try {
             $response = Satim::confirm($payment->reference);
             $statusCode = $response->orderStatus ?? null;
+            $responseArray = is_array($response) ? $response : json_decode(json_encode($response), true);
+            $params = $responseArray['params']??[];
 
             // Prepare metadata
             $metadata = array_merge($payment->metadata ?? [], [
                 'satim_order_status' => $statusCode,
-                'satim_confirmation_response' => json_decode(json_encode($response), true),
+                'satim_confirmation_response' => $responseArray,
+                'order_number' => $responseArray['orderNumber']??null,
+                'order_status' => $responseArray['OrderStatus']??null,
+                'error_code' => $responseArray['ErrorCode']??null,
+                'approval_code' => $responseArray['approvalCode']??null,
+                'response_code' => $params['respCode']??null,
+                'response_code_description' => $params['respCode_desc']??null,
+                'card_holder_name' => $responseArray['cardholderName']??null,
+                
             ]);
 
             // Wrap status and metadata updates in a transaction for consistency
