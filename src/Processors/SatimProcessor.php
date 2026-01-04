@@ -5,6 +5,7 @@ namespace Ideacrafters\EloquentPayable\Processors;
 use Ideacrafters\EloquentPayable\Contracts\Payable;
 use Ideacrafters\EloquentPayable\Contracts\Payer;
 use Ideacrafters\EloquentPayable\Exceptions\PaymentException;
+use Ideacrafters\EloquentPayable\Exceptions\SatimAccessDeniedException;
 use Ideacrafters\EloquentPayable\Models\Payment;
 use Ideacrafters\EloquentPayable\Models\PaymentRedirectModel;
 use Ideacrafters\EloquentPayable\PaymentStatus;
@@ -83,6 +84,10 @@ class SatimProcessor extends BaseProcessor
 
             return $payment;
         } catch (\Exception $e) {
+            if (str_contains($e->getMessage(), 'Access denied')) {
+                throw new SatimAccessDeniedException('Satim Access Denied', 0, $e);
+            }
+
             throw new PaymentException('Failed to create SATIM payment: '.$e->getMessage(), 0, $e);
         }
     }
@@ -180,6 +185,10 @@ class SatimProcessor extends BaseProcessor
 
             return $payment;
         } catch (\Exception $e) {
+            if (str_contains($e->getMessage(), 'Access denied')) {
+                throw new SatimAccessDeniedException('Satim Access Denied', 0, $e);
+            }
+
             $payment->markAsFailed('Failed to complete redirect payment: '.$e->getMessage());
             throw new PaymentException('Redirect payment completion failed: '.$e->getMessage(), 0, $e);
         }

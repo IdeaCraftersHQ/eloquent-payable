@@ -9,6 +9,7 @@ use Ideacrafters\EloquentPayable\Contracts\PaymentRedirect;
 use Ideacrafters\EloquentPayable\Events\OfflinePaymentCreated;
 use Ideacrafters\EloquentPayable\Events\PaymentCreated;
 use Ideacrafters\EloquentPayable\Exceptions\PaymentException;
+use Ideacrafters\EloquentPayable\Exceptions\SatimAccessDeniedException;
 use Ideacrafters\EloquentPayable\Models\Payment;
 use Ideacrafters\EloquentPayable\PaymentStatus;
 use Ideacrafters\EloquentPayable\Traits\InteractsWithPaymentEvents;
@@ -104,6 +105,11 @@ abstract class BaseProcessor implements PaymentProcessor
             // If $payment is null, it means validation failed before payment creation
             if ($payment !== null) {
                 $payment->markAsFailed($e->getMessage());
+            }
+            
+
+            if ($e instanceof SatimAccessDeniedException) {
+                throw $e;
             }
 
             throw new PaymentException('Redirect payment creation failed: '.$e->getMessage(), 0, $e);
