@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.13] - 2026-03-24
+
+### Fixed
+- Set `redirectExpiresAt` on SATIM payment redirects instead of `null`, so `isRedirectExpired()` and `isRedirectReady()` work correctly
+- Store `redirect_expires_at` in payment metadata during `SatimProcessor::doProcess()`
+
+### Added
+- Configurable `satim_session_ttl_minutes` in `config/payable.php` (default: 15 minutes, env: `SATIM_SESSION_TTL_MINUTES`)
+
+---
+
 ## [2.1.11] - 2026-01-04
 
 ### Fixed

@@ -156,6 +156,18 @@ return [
     | Currency: 012 (DZD - Algerian Dinar)
     |
     */
+    /*
+    |--------------------------------------------------------------------------
+    | SATIM Session TTL
+    |--------------------------------------------------------------------------
+    |
+    | The number of minutes before a SATIM payment redirect is considered
+    | expired. SATIM test sessions expire around 20 min; 15 provides a
+    | safety margin. Used by SatimProcessor for redirectExpiresAt.
+    |
+    */
+    'satim_session_ttl_minutes' => env('SATIM_SESSION_TTL_MINUTES', 15),
+
     'satim' => [
         'username' => env('SATIM_USERNAME'),
         'password' => env('SATIM_PASSWORD'),

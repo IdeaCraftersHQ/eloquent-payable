@@ -78,7 +78,9 @@ class SatimProcessor extends BaseProcessor
                 'metadata' => array_merge($payment->metadata ?? [], [
                     'satim_order_id' => $responseArray['orderId']??null,
                     'satim_form_url' => $responseArray['formUrl']??null,
-                
+                    'redirect_expires_at' => now()->addMinutes(
+                        $options['session_ttl_minutes'] ?? config('payable.satim_session_ttl_minutes', 15)
+                    )->toIso8601String(),
                 ]),
             ]);
 
@@ -122,7 +124,9 @@ class SatimProcessor extends BaseProcessor
                 redirectMethod: 'GET',
                 redirectData: [],
                 redirectSessionId: $payment->reference,
-                redirectExpiresAt: null,
+                redirectExpiresAt: now()->addMinutes(
+                    $options['session_ttl_minutes'] ?? config('payable.satim_session_ttl_minutes', 15)
+                ),
                 redirectMetadata: [
                     'satim_order_id' => $payment->reference,
                     'satim_form_url' => $formUrl,
