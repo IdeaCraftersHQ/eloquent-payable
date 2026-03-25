@@ -370,6 +370,40 @@ class SatimProcessor extends BaseProcessor
         ];
     }
 
+    /**
+     * Format a SATIM payment into a standardized display structure.
+     *
+     * Returns all relevant fields for receipt/status rendering so that
+     * consumers (Vue pages, Blade templates, PDFs) don't need to dig
+     * into metadata or know about SATIM response internals.
+     *
+     * @param  Payment  $payment
+     * @return array
+     */
+    public function formatPaymentForDisplay(Payment $payment): array
+    {
+        $meta = $payment->metadata ?? [];
+        $confirmResponse = $meta['satim_confirmation_response'] ?? [];
+
+        $isFailed = $payment->isFailed();
+        $isCompleted = $payment->isCompleted();
+
+        return [
+            'reference' => $payment->reference,
+            'order_number' => $confirmResponse['orderNumber'] ?? $meta['order_number'] ?? null,
+            'approval_code' => $meta['approval_code'] ?? $confirmResponse['approvalCode'] ?? null,
+            'amount' => (float) $payment->amount,
+            'currency' => $payment->currency,
+            'status' => (string) $payment->status,
+            'method' => 'carte CIB/Edhahabia',
+            'paid_at' => $payment->paid_at?->toIso8601String(),
+            'created_at' => $payment->created_at?->toIso8601String(),
+            'is_completed' => $isCompleted,
+            'is_failed' => $isFailed,
+            'error_details' => $isFailed ? $this->getErrorDetailsForDisplay($payment) : null,
+        ];
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Protected Helper Methods

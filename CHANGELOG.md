@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Payment::getErrorCodeAttribute()` — accessor for `metadata.error_code`
 - `Payment::getErrorDescriptionAttribute()` — accessor for `metadata.response_code_description`
 - `Payment::getApprovalCodeAttribute()` — accessor for `metadata.approval_code`
+- `SatimProcessor::formatPaymentForDisplay(Payment)` — returns a standardized display structure with all receipt/status fields so consumers don't need to dig into metadata
 
 ---
 
