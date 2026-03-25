@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.14] - 2026-03-25
+
+### Fixed
+- `SatimProcessor::doCompleteRedirect()` now stores SATIM error context (actionCode, respCode, etc.) in payment metadata when `SatimException` is thrown, eliminating the need for app-level workarounds
+
+### Added
+- `SatimProcessor::getErrorDetailsForDisplay(Payment)` — returns normalized error details with fallback chain from confirmation response to flat metadata fields
+- `Payment::getOrderNumberAttribute()` — accessor for `metadata.order_number`
+- `Payment::getErrorCodeAttribute()` — accessor for `metadata.error_code`
+- `Payment::getErrorDescriptionAttribute()` — accessor for `metadata.response_code_description`
+- `Payment::getApprovalCodeAttribute()` — accessor for `metadata.approval_code`
+
+---
+
 ## [2.1.13] - 2026-03-24
 
 ### Fixed

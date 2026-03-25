@@ -74,4 +74,50 @@ class Payment extends Model
     {
         return $this->amount - ($this->refunded_amount ?? 0);
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | SATIM Metadata Accessors
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Get the SATIM order number from metadata.
+     *
+     * @return string|null
+     */
+    public function getOrderNumberAttribute(): ?string
+    {
+        return $this->metadata['order_number'] ?? null;
+    }
+
+    /**
+     * Get the SATIM error code from metadata.
+     *
+     * @return string|null
+     */
+    public function getErrorCodeAttribute(): ?string
+    {
+        return $this->metadata['error_code'] ?? null;
+    }
+
+    /**
+     * Get the SATIM response code description from metadata.
+     *
+     * @return string|null
+     */
+    public function getErrorDescriptionAttribute(): ?string
+    {
+        return $this->metadata['response_code_description'] ?? null;
+    }
+
+    /**
+     * Get the SATIM approval code from metadata.
+     *
+     * @return string|null
+     */
+    public function getApprovalCodeAttribute(): ?string
+    {
+        return $this->metadata['approval_code'] ?? null;
+    }
 }

@@ -9,6 +9,7 @@ use Ideacrafters\EloquentPayable\Exceptions\SatimAccessDeniedException;
 use Ideacrafters\EloquentPayable\Models\Payment;
 use Ideacrafters\EloquentPayable\Models\PaymentRedirectModel;
 use Ideacrafters\EloquentPayable\PaymentStatus;
+use Ideacrafters\SatimLaravel\Exceptions\SatimException;
 use Ideacrafters\SatimLaravel\Facades\Satim;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
@@ -193,6 +194,9 @@ class SatimProcessor extends BaseProcessor
                 throw new SatimAccessDeniedException('Satim Access Denied', 0, $e);
             }
 
+            // Extract SATIM response context from SatimException before marking as failed
+            $this->storeSatimErrorContext($payment, $e);
+
             $payment->markAsFailed('Failed to complete redirect payment: '.$e->getMessage());
             throw new PaymentException('Redirect payment completion failed: '.$e->getMessage(), 0, $e);
         }
@@ -333,9 +337,81 @@ class SatimProcessor extends BaseProcessor
 
     /*
     |--------------------------------------------------------------------------
+    | Display & Error Helpers
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Extract SATIM error details from a payment's metadata for display purposes.
+     *
+     * Returns a normalized array with fallback chain:
+     * satim_confirmation_response → flat metadata fields.
+     *
+     * @param  Payment  $payment
+     * @return array|null
+     */
+    public function getErrorDetailsForDisplay(Payment $payment): ?array
+    {
+        if (! $payment->isFailed()) {
+            return null;
+        }
+
+        $meta = $payment->metadata ?? [];
+        $confirmResponse = $meta['satim_confirmation_response'] ?? [];
+        $params = $confirmResponse['params'] ?? [];
+
+        return [
+            'action_code' => $confirmResponse['actionCode'] ?? $meta['error_code'] ?? null,
+            'action_code_description' => $confirmResponse['actionCodeDescription'] ?? $meta['response_code_description'] ?? null,
+            'order_number' => $confirmResponse['orderNumber'] ?? $meta['order_number'] ?? null,
+            'order_status' => $confirmResponse['OrderStatus'] ?? $meta['order_status'] ?? null,
+            'resp_code' => ($params['respCode'] ?? null) ?? $meta['response_code'] ?? null,
+            'resp_code_desc' => ($params['respCode_desc'] ?? null) ?? $meta['response_code_description'] ?? null,
+        ];
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | Protected Helper Methods
     |--------------------------------------------------------------------------
     */
+
+    /**
+     * Extract SATIM response data from exception and store it in payment metadata.
+     *
+     * When satim-laravel throws SatimException for declined payments (e.g. ErrorCode 2),
+     * the confirmation response metadata (respCode, actionCode, etc.) is only available
+     * in the exception's context. This method recovers that data before the payment is
+     * marked as failed.
+     *
+     * @param  Payment  $payment
+     * @param  \Exception  $e
+     * @return void
+     */
+    protected function storeSatimErrorContext(Payment $payment, \Exception $e): void
+    {
+        $satimException = $e instanceof SatimException
+            ? $e
+            : ($e->getPrevious() instanceof SatimException ? $e->getPrevious() : null);
+
+        if (! $satimException || ! $satimException->getContext()) {
+            return;
+        }
+
+        $context = $satimException->getContext();
+        $params = $context['params'] ?? [];
+
+        $payment->update([
+            'metadata' => array_merge($payment->metadata ?? [], [
+                'satim_confirmation_response' => $context,
+                'order_number' => $context['orderNumber'] ?? $payment->metadata['order_number'] ?? null,
+                'order_status' => $context['OrderStatus'] ?? null,
+                'error_code' => $context['ErrorCode'] ?? null,
+                'response_code' => $params['respCode'] ?? null,
+                'response_code_description' => $params['respCode_desc'] ?? null,
+            ]),
+        ]);
+    }
 
     /**
      * Cancel a payment.
