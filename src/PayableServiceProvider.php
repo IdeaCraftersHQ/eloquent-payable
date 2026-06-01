@@ -38,6 +38,12 @@ class PayableServiceProvider extends ServiceProvider
         $this->app->singleton('payable', function ($app) {
             return new \Ideacrafters\EloquentPayable\PayableManager();
         });
+
+        // Alias the class to the singleton so `app(PayableManager::class)`
+        // returns the same instance the `Payable` facade does — processors
+        // look up the credential-resolver registry by class, and without the
+        // alias they'd get a fresh, empty manager.
+        $this->app->alias('payable', \Ideacrafters\EloquentPayable\PayableManager::class);
     }
 
     /**

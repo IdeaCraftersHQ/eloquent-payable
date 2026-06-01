@@ -4,13 +4,16 @@ namespace Ideacrafters\EloquentPayable\Processors;
 
 use Ideacrafters\EloquentPayable\Contracts\Payable;
 use Ideacrafters\EloquentPayable\Contracts\Payer;
+use Ideacrafters\EloquentPayable\Credentials\CredentialBundle;
 use Ideacrafters\EloquentPayable\Exceptions\PaymentException;
 use Ideacrafters\EloquentPayable\Exceptions\SatimAccessDeniedException;
 use Ideacrafters\EloquentPayable\Models\Payment;
 use Ideacrafters\EloquentPayable\Models\PaymentRedirectModel;
+use Ideacrafters\EloquentPayable\PayableManager;
 use Ideacrafters\EloquentPayable\PaymentStatus;
+use Ideacrafters\SatimLaravel\Client\SatimClient;
 use Ideacrafters\SatimLaravel\Exceptions\SatimException;
-use Ideacrafters\SatimLaravel\Facades\Satim;
+use Ideacrafters\SatimLaravel\Satim;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 
@@ -37,8 +40,21 @@ class SatimProcessor extends BaseProcessor
         $successUrl = $options['success_url'] ?? $this->getDefaultSuccessUrl();
         $failUrl = $options['fail_url'] ?? $this->getDefaultFailUrl();
 
+        // Persist merchant_pointer into metadata BEFORE invoking the resolver so
+        // the Payment passed to it already carries the pointer — confirm/refund
+        // can then re-resolve the same tenant credentials from metadata alone.
+        if (array_key_exists('merchant_pointer', $options)) {
+            $payment->update([
+                'metadata' => array_merge($payment->metadata ?? [], [
+                    'merchant_pointer' => $options['merchant_pointer'],
+                ]),
+            ]);
+            $payment->refresh();
+        }
+
         try {
-            $satimRequest = Satim::amount($this->convertToCents($amount))
+            $satim = $this->buildSatim($this->resolveCredentials($payment));
+            $satimRequest = $satim->amount($this->convertToCents($amount))
                 ->returnUrl($successUrl)
                 ->failUrl($failUrl);
 
@@ -150,7 +166,8 @@ class SatimProcessor extends BaseProcessor
         }
 
         try {
-            $response = Satim::confirm($payment->reference);
+            $satim = $this->buildSatim($this->resolveCredentials($payment));
+            $response = $satim->confirm($payment->reference);
             $statusCode = $response->orderStatus ?? null;
             $responseArray = is_array($response) ? $response : json_decode(json_encode($response), true);
             $params = $responseArray['params']??[];
@@ -476,14 +493,18 @@ class SatimProcessor extends BaseProcessor
         $refundAmount = $amount ?? $payment->amount;
 
         try {
-            $response = Satim::refund($payment->reference, $this->convertToCents($refundAmount));
-            
-            // Convert response object to associative array
-            $responseArray = is_array($response) ? $response : json_decode(json_encode($response), true);
+            $satim = $this->buildSatim($this->resolveCredentials($payment));
+            $response = $satim->refund($payment->reference, $this->convertToCents($refundAmount));
 
-            if (! ($responseArray['success'] ?? false)) {
-                throw new PaymentException('SATIM refund failed: '.($responseArray['message'] ?? 'Unknown error'));
+            // SatimClient::refund() throws SatimException on any non-zero error
+            // code, so reaching this point means the call succeeded. The defensive
+            // check uses the DTO's own success predicate; the prior `success`/
+            // `message` keys never existed on the response.
+            if (! $response->isSuccessful()) {
+                throw new PaymentException('SATIM refund failed: '.($response->errorMessage ?? 'Unknown error'));
             }
+
+            $responseArray = json_decode(json_encode($response), true);
 
             $totalRefunded = ($payment->refunded_amount ?? 0) + $refundAmount;
 
@@ -522,6 +543,83 @@ class SatimProcessor extends BaseProcessor
     protected function convertToCents(float $amount): int
     {
         return (int) round($amount * 100);
+    }
+
+    /**
+     * Resolve the credentials to use for this payment. Asks the registered
+     * resolver (if any), falling back to env config when the resolver is
+     * absent or returns null. Validates resolver-returned arrays via
+     * {@see CredentialBundle::forSatim()} — partial bundles surface as
+     * {@see \Ideacrafters\EloquentPayable\Exceptions\InvalidCredentialBundleException}.
+     *
+     * @return array<string, mixed>
+     */
+    protected function resolveCredentials(Payment $payment): array
+    {
+        $resolver = app(PayableManager::class)->getCredentialResolver($this->getName());
+
+        if ($resolver === null) {
+            return $this->envCredentials();
+        }
+
+        $resolved = $resolver($payment);
+
+        if ($resolved === null) {
+            return $this->envCredentials();
+        }
+
+        CredentialBundle::forSatim($resolved);
+
+        return $resolved;
+    }
+
+    /**
+     * Build a fresh {@see Satim} instance from a credential array. Per-call
+     * instantiation (rather than the Satim facade's container singleton)
+     * isolates each payment's auth context — required for multi-tenant
+     * routing where every Payment may settle into a different merchant.
+     *
+     * @param  array<string, mixed>  $creds
+     */
+    protected function buildSatim(array $creds): Satim
+    {
+        $client = new SatimClient(
+            apiUrl: $creds['api_url'] ?? config('satim.api_url'),
+            username: $creds['username'],
+            password: $creds['password'],
+            verifySSL: $creds['verify_ssl'] ?? config('satim.verify_ssl', true),
+            timeout: $creds['timeout'] ?? config('satim.timeout', 30),
+            connectTimeout: $creds['connect_timeout'] ?? config('satim.connect_timeout', 10),
+        );
+
+        return new Satim(
+            client: $client,
+            defaultLanguage: $creds['language'] ?? config('satim.language', 'fr'),
+            currency: $creds['currency'] ?? config('satim.currency', '012'),
+            terminalId: $creds['terminal_id'],
+        );
+    }
+
+    /**
+     * Snapshot the env-config credentials. Used when no resolver is registered
+     * or the resolver opts out by returning null — single-tenant deployments
+     * see no behavior change.
+     *
+     * @return array<string, mixed>
+     */
+    protected function envCredentials(): array
+    {
+        return [
+            'username' => config('satim.username'),
+            'password' => config('satim.password'),
+            'terminal_id' => config('satim.terminal_id'),
+            'api_url' => config('satim.api_url'),
+            'language' => config('satim.language', 'fr'),
+            'currency' => config('satim.currency', '012'),
+            'verify_ssl' => config('satim.verify_ssl', true),
+            'timeout' => config('satim.timeout', 30),
+            'connect_timeout' => config('satim.connect_timeout', 10),
+        ];
     }
 
     /**

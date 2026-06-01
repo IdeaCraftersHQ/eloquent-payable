@@ -5,14 +5,16 @@ namespace Ideacrafters\EloquentPayable\Processors;
 use Ideacrafters\EloquentPayable\Contracts\Payable;
 use Ideacrafters\EloquentPayable\Contracts\Payer;
 use Ideacrafters\EloquentPayable\Contracts\PaymentRedirect;
+use Ideacrafters\EloquentPayable\Credentials\CredentialBundle;
+use Ideacrafters\EloquentPayable\Exceptions\PaymentException;
 use Ideacrafters\EloquentPayable\Models\Payment;
 use Ideacrafters\EloquentPayable\Models\PaymentRedirectModel;
-use Ideacrafters\EloquentPayable\Exceptions\PaymentException;
+use Ideacrafters\EloquentPayable\PayableManager;
 use Ideacrafters\EloquentPayable\PaymentStatus;
-use Illuminate\Support\Facades\Config;
-use Illuminate\Support\Facades\Http;
 use Carbon\Carbon;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class SlickpayProcessor extends BaseProcessor
@@ -35,8 +37,20 @@ class SlickpayProcessor extends BaseProcessor
      */
     protected function doProcess(Payment $payment, Payable $payable, Payer $payer, float $amount, array $options = []): Payment
     {
+        // Persist merchant_pointer into metadata BEFORE invoking the resolver so
+        // the Payment passed to it already carries the pointer — confirm flows
+        // can re-resolve the same tenant credentials from metadata alone.
+        if (array_key_exists('merchant_pointer', $options)) {
+            $payment->update([
+                'metadata' => array_merge($payment->metadata ?? [], [
+                    'merchant_pointer' => $options['merchant_pointer'],
+                ]),
+            ]);
+            $payment->refresh();
+        }
+
         // Create invoice via Slickpay API
-        $invoiceResponse = $this->createInvoice($payable, $payer, $amount, $options);
+        $invoiceResponse = $this->createInvoice($payment, $payable, $payer, $amount, $options);
 
         if (!$invoiceResponse['success']) {
             throw new PaymentException('Failed to create invoice: ' . ($invoiceResponse['message'] ?? 'Unknown error'));
@@ -107,7 +121,7 @@ class SlickpayProcessor extends BaseProcessor
         }
 
         try {
-            $invoiceStatus = $this->getInvoiceStatus($payment->reference);
+            $invoiceStatus = $this->getInvoiceStatus($payment, $payment->reference);
 
             if ($invoiceStatus['completed']) {
                 $payment->markAsPaid();
@@ -296,15 +310,16 @@ class SlickpayProcessor extends BaseProcessor
     /**
      * Create an invoice via Slickpay API.
      *
+     * @param  Payment  $payment
      * @param  Payable  $payable
      * @param  Payer  $payer
      * @param  float  $amount
      * @param  array  $options
      * @return array
      */
-    protected function createInvoice(Payable $payable, Payer $payer, float $amount, array $options = []): array
+    protected function createInvoice(Payment $payment, Payable $payable, Payer $payer, float $amount, array $options = []): array
     {
-        
+
         $payload = [
             'amount' => $amount,
             'url' => $options['success_url'],
@@ -323,7 +338,8 @@ class SlickpayProcessor extends BaseProcessor
         ];
         try {
 
-            $response = $this->getHttpClient()->post('/users/invoices', $payload);
+            $response = $this->buildHttpClient($this->resolveCredentials($payment))
+                ->post('/users/invoices', $payload);
 
 
             if (!$response->successful()) {
@@ -341,13 +357,15 @@ class SlickpayProcessor extends BaseProcessor
     /**
      * Get invoice status from Slickpay API.
      *
+     * @param  Payment  $payment
      * @param  string  $invoiceId
      * @return array
      */
-    protected function getInvoiceStatus(string $invoiceId): array
+    protected function getInvoiceStatus(Payment $payment, string $invoiceId): array
     {
         try {
-            $response = $this->getHttpClient()->get('/users/invoices/' . $invoiceId);
+            $response = $this->buildHttpClient($this->resolveCredentials($payment))
+                ->get('/users/invoices/' . $invoiceId);
 
             if (!$response->successful()) {
                 throw new PaymentException('Slickpay API request failed: ' . $response->body());
@@ -365,13 +383,58 @@ class SlickpayProcessor extends BaseProcessor
     }
 
     /**
-     * Get the base URL for Slickpay API based on sandbox mode.
+     * Resolve the credentials to use for this payment. Asks the registered
+     * resolver (if any), falling back to env config when the resolver is
+     * absent or returns null. Validates resolver-returned arrays via
+     * {@see CredentialBundle::forSlickpay()} — partial bundles surface as
+     * {@see \Ideacrafters\EloquentPayable\Exceptions\InvalidCredentialBundleException}.
      *
-     * @return string
+     * @return array<string, mixed>
      */
-    protected function getBaseUrl(): string
+    protected function resolveCredentials(Payment $payment): array
     {
-        $sandboxMode = Config::get('payable.slickpay.sandbox_mode', true);
+        $resolver = app(PayableManager::class)->getCredentialResolver($this->getName());
+
+        if ($resolver === null) {
+            return $this->envCredentials();
+        }
+
+        $resolved = $resolver($payment);
+
+        if ($resolved === null) {
+            return $this->envCredentials();
+        }
+
+        CredentialBundle::forSlickpay($resolved);
+
+        return $resolved;
+    }
+
+    /**
+     * Snapshot the env-config credentials. Used when no resolver is registered
+     * or the resolver opts out by returning null — single-tenant deployments
+     * see no behavior change.
+     *
+     * @return array<string, mixed>
+     */
+    protected function envCredentials(): array
+    {
+        return [
+            'api_key' => Config::get('payable.slickpay.api_key'),
+            'sandbox_mode' => Config::get('payable.slickpay.sandbox_mode', true),
+        ];
+    }
+
+    /**
+     * Pick the Slickpay base URL based on the credential bundle's
+     * `sandbox_mode` flag — per-tenant credentials may legitimately point at
+     * a different environment than the platform default.
+     *
+     * @param  array<string, mixed>  $creds
+     */
+    protected function getBaseUrl(array $creds): string
+    {
+        $sandboxMode = $creds['sandbox_mode'] ?? Config::get('payable.slickpay.sandbox_mode', true);
 
         if ($sandboxMode) {
             return Config::get('payable.slickpay.dev_api', 'https://devapi.slick-pay.com/api/v2');
@@ -501,15 +564,23 @@ class SlickpayProcessor extends BaseProcessor
     }
 
 
-    protected function getHttpClient(): PendingRequest
+    /**
+     * Build a fresh HTTP client configured for the given credential bundle.
+     * Per-call instantiation isolates each payment's auth context — required
+     * for multi-tenant routing where every Payment may settle into a
+     * different merchant.
+     *
+     * @param  array<string, mixed>  $creds
+     */
+    protected function buildHttpClient(array $creds): PendingRequest
     {
-        $apiKey = Config::get('payable.slickpay.api_key');
-        $baseUrl = $this->getBaseUrl();
+        $apiKey = $creds['api_key'] ?? null;
         if (!$apiKey) {
             throw new PaymentException('Slickpay API key not configured.');
         }
+
         return Http::asJson()
-            ->baseUrl($baseUrl)
+            ->baseUrl($this->getBaseUrl($creds))
             ->withToken($apiKey);
     }
 }
