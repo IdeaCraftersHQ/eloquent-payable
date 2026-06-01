@@ -9,7 +9,6 @@ use Ideacrafters\EloquentPayable\Exceptions\PaymentException;
 use Ideacrafters\EloquentPayable\Exceptions\SatimAccessDeniedException;
 use Ideacrafters\EloquentPayable\Models\Payment;
 use Ideacrafters\EloquentPayable\Models\PaymentRedirectModel;
-use Ideacrafters\EloquentPayable\PayableManager;
 use Ideacrafters\EloquentPayable\PaymentStatus;
 use Ideacrafters\SatimLaravel\Client\SatimClient;
 use Ideacrafters\SatimLaravel\Exceptions\SatimException;
@@ -546,31 +545,15 @@ class SatimProcessor extends BaseProcessor
     }
 
     /**
-     * Resolve the credentials to use for this payment. Asks the registered
-     * resolver (if any), falling back to env config when the resolver is
-     * absent or returns null. Validates resolver-returned arrays via
+     * Validate a resolver-returned SATIM credential bundle via
      * {@see CredentialBundle::forSatim()} — partial bundles surface as
      * {@see \Ideacrafters\EloquentPayable\Exceptions\InvalidCredentialBundleException}.
      *
-     * @return array<string, mixed>
+     * @param  array<string, mixed>  $resolved
      */
-    protected function resolveCredentials(Payment $payment): array
+    protected function validateCredentialBundle(array $resolved): void
     {
-        $resolver = app(PayableManager::class)->getCredentialResolver($this->getName());
-
-        if ($resolver === null) {
-            return $this->envCredentials();
-        }
-
-        $resolved = $resolver($payment);
-
-        if ($resolved === null) {
-            return $this->envCredentials();
-        }
-
         CredentialBundle::forSatim($resolved);
-
-        return $resolved;
     }
 
     /**
