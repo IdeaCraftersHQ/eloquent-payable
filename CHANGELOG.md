@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-06-01
+
+### Added
+- Per-payment credential resolution via `PayableManager::resolveCredentialsFor(processor, closure)`. Hosts can now route each payment through a different SATIM or Slickpay merchant account by registering a `fn(Payment): ?array` resolver at boot. Returning `null` falls back to env credentials, so single-tenant deployments are unaffected.
+- `CredentialBundle::forSatim()` and `::forSlickpay()` validate the all-or-nothing rule on required auth fields and throw `InvalidCredentialBundleException` on partial bundles.
+- `merchant_pointer` is persisted into `payment.metadata` at create time so confirm and refund re-resolve the same tenant's credentials without depending on the host's relation chain remaining intact.
+
+### Changed
+- `SatimProcessor` no longer uses the `Satim` facade internally; constructs a fresh `SatimClient` + `Satim` per call from the resolved credential bundle.
+- `SlickpayProcessor` builds its HTTP client per call with the resolved credentials; `getBaseUrl()` honors per-tenant `sandbox_mode`.
+
+### Internal
+- `PayableServiceProvider` aliases `PayableManager::class` to the `'payable'` singleton. Without the alias, processors looking up the registry via `app(PayableManager::class)` would get a different instance than the `Payable` facade.
+
+### Upgrade notes
+- Fully backward compatible. Existing projects need no code or config changes — when no resolver is registered, every payment resolves to your env/config credentials exactly as in 2.1.x. The new per-tenant routing only activates once you register a resolver via `PayableManager::resolveCredentialsFor()`.
+
+---
+
 ## [2.1.14] - 2026-03-25
 
 ### Fixed

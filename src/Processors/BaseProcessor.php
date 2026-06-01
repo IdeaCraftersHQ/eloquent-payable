@@ -11,6 +11,7 @@ use Ideacrafters\EloquentPayable\Events\PaymentCreated;
 use Ideacrafters\EloquentPayable\Exceptions\PaymentException;
 use Ideacrafters\EloquentPayable\Exceptions\SatimAccessDeniedException;
 use Ideacrafters\EloquentPayable\Models\Payment;
+use Ideacrafters\EloquentPayable\PayableManager;
 use Ideacrafters\EloquentPayable\PaymentStatus;
 use Ideacrafters\EloquentPayable\Traits\InteractsWithPaymentEvents;
 use Illuminate\Support\Facades\Config;
@@ -370,6 +371,56 @@ abstract class BaseProcessor implements PaymentProcessor
     protected function getProcessorNameForEvents(): ?string
     {
         return $this->getName();
+    }
+
+    /**
+     * Resolve the credentials to use for this payment. Asks the resolver
+     * registered for this processor (if any), falling back to env config when
+     * the resolver is absent or returns null. A resolver-returned bundle is
+     * validated by {@see validateCredentialBundle()} before use.
+     *
+     * @return array<string, mixed>
+     */
+    protected function resolveCredentials(Payment $payment): array
+    {
+        $resolver = app(PayableManager::class)->getCredentialResolver($this->getName());
+
+        if ($resolver === null) {
+            return $this->envCredentials();
+        }
+
+        $resolved = $resolver($payment);
+
+        if ($resolved === null) {
+            return $this->envCredentials();
+        }
+
+        $this->validateCredentialBundle($resolved);
+
+        return $resolved;
+    }
+
+    /**
+     * Snapshot the env-config credentials used as the fallback when no resolver
+     * is registered or the resolver opts out by returning null. Defaults to an
+     * empty bundle; processors that support per-tenant credentials override it.
+     *
+     * @return array<string, mixed>
+     */
+    protected function envCredentials(): array
+    {
+        return [];
+    }
+
+    /**
+     * Validate a resolver-returned credential bundle. Defaults to a no-op;
+     * processors with required-field rules override this to reject partial
+     * bundles (typically via a {@see \Ideacrafters\EloquentPayable\Credentials\CredentialBundle} factory).
+     *
+     * @param  array<string, mixed>  $resolved
+     */
+    protected function validateCredentialBundle(array $resolved): void
+    {
     }
 
     /**

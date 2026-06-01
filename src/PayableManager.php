@@ -2,6 +2,8 @@
 
 namespace Ideacrafters\EloquentPayable;
 
+use Closure;
+use Ideacrafters\EloquentPayable\Credentials\CredentialResolver;
 use Ideacrafters\EloquentPayable\Models\Payment;
 use Ideacrafters\EloquentPayable\Contracts\PaymentProcessor;
 use Ideacrafters\EloquentPayable\Contracts\Payable;
@@ -29,6 +31,16 @@ class PayableManager
      * @var string
      */
     protected $defaultProcessor;
+
+    /**
+     * Credential resolvers registered by the host application, keyed by
+     * processor name. Each resolver is called by its processor with the
+     * Payment under processing and returns either a credentials array or
+     * null to fall back to env config. See {@see CredentialResolver}.
+     *
+     * @var array<string, CredentialResolver>
+     */
+    protected array $credentialResolvers = [];
 
     /**
      * Create a new PayableManager instance.
@@ -861,6 +873,37 @@ class PayableManager
     public function emergency(string $message, array $context = []): void
     {
         $this->log('emergency', $message, $context);
+    }
+
+    /**
+     * Register a credentials resolver for a payment processor. The host
+     * application calls this once at boot (typically from a ServiceProvider)
+     * to teach the manager how to look up per-tenant credentials. The
+     * processor invokes the resolver at payment-create, confirm, and refund
+     * time with the Payment under processing.
+     *
+     * Re-registering the same processor name replaces the previous resolver.
+     * If no resolver is registered for a processor, the processor uses its
+     * env-config credentials — existing single-tenant deployments require
+     * no migration.
+     *
+     * @param  string   $processor  Matches a {@see ProcessorNames} constant
+     *                              (e.g. 'satim', 'slickpay').
+     * @param  Closure  $callback   Signature: `fn (Payment $payment): ?array`
+     */
+    public function resolveCredentialsFor(string $processor, Closure $callback): void
+    {
+        $this->credentialResolvers[$processor] = new CredentialResolver($callback);
+    }
+
+    /**
+     * Fetch the registered credentials resolver for a processor, or null
+     * when none is registered. Processors call this from their internal
+     * `resolveCredentials()` helper to obtain a per-call credentials array.
+     */
+    public function getCredentialResolver(string $processor): ?CredentialResolver
+    {
+        return $this->credentialResolvers[$processor] ?? null;
     }
 
     /**
