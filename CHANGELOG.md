@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-06-17
+
+### Added
+- Laravel 13 support. `illuminate/*` constraints now allow `^13.0` alongside the existing 8–12 range. On a Laravel 13 project, Composer resolves `ideacrafters/satim-laravel` to its Laravel 13–compatible `^1.3` release automatically (the existing `^1.1` constraint already permits it).
+
+### Changed
+- Dev tooling extended to test against Laravel 13: `orchestra/testbench` now allows `^11.0` and `phpunit/phpunit` allows `^11.0|^12.0` (testbench 11 requires PHPUnit ≥ 11).
+
+### Upgrade notes
+- Fully backward compatible. No code or config changes required; the new constraints are purely additive.
+
+---
+
 ## [2.2.0] - 2026-06-01
 
 ### Added
