@@ -5,6 +5,7 @@ namespace Ideacrafters\EloquentPayable\Processors;
 use Ideacrafters\EloquentPayable\Contracts\Payable;
 use Ideacrafters\EloquentPayable\Contracts\Payer;
 use Ideacrafters\EloquentPayable\Credentials\CredentialBundle;
+use Ideacrafters\EloquentPayable\Exceptions\PaymentAmountMismatchException;
 use Ideacrafters\EloquentPayable\Exceptions\PaymentException;
 use Ideacrafters\EloquentPayable\Exceptions\SatimAccessDeniedException;
 use Ideacrafters\EloquentPayable\Models\Payment;
@@ -53,7 +54,9 @@ class SatimProcessor extends BaseProcessor
 
         try {
             $satim = $this->buildSatim($this->resolveCredentials($payment));
-            $satimRequest = $satim->amount($this->convertToCents($amount))
+            // Amounts are passed in DZD (major units): Satim::amount() converts to
+            // centimes itself, so converting here would multiply by 100 twice.
+            $satimRequest = $satim->amount($amount)
                 ->returnUrl($successUrl)
                 ->failUrl($failUrl);
 
@@ -182,8 +185,34 @@ class SatimProcessor extends BaseProcessor
                 'response_code' => $params['respCode']??null,
                 'response_code_description' => $params['respCode_desc']??null,
                 'card_holder_name' => $responseArray['cardholderName']??null,
-                
             ]);
+
+            // SATIM echoes the registered order amount in centimes. If it disagrees
+            // with the Payment being confirmed, the customer was charged at a
+            // different magnitude than we recorded — refuse to mark it paid rather
+            // than let a wrong-amount capture be fulfilled.
+            $chargedCentimes = $response->depositAmount ?? $response->amount;
+
+            if ($response->isPaid() && $chargedCentimes !== null && $chargedCentimes !== $this->toCentimes($payment->amount)) {
+                $metadata['amount_mismatch'] = [
+                    'expected_centimes' => $this->toCentimes($payment->amount),
+                    'charged_centimes' => $chargedCentimes,
+                ];
+
+                $message = sprintf(
+                    'SATIM reported %d centimes for order %s but the payment is recorded as %d centimes.',
+                    $chargedCentimes,
+                    $payment->reference,
+                    $this->toCentimes($payment->amount)
+                );
+
+                DB::transaction(function () use ($payment, $metadata, $message) {
+                    $payment->markAsFailed($message);
+                    $payment->update(['metadata' => $metadata]);
+                });
+
+                throw new PaymentAmountMismatchException($message);
+            }
 
             // Wrap status and metadata updates in a transaction for consistency
             DB::transaction(function () use ($payment, $response, $statusCode, $metadata) {
@@ -205,6 +234,9 @@ class SatimProcessor extends BaseProcessor
             });
 
             return $payment;
+        } catch (PaymentAmountMismatchException $e) {
+            // Already persisted as failed with the mismatch recorded — surface as-is.
+            throw $e;
         } catch (\Exception $e) {
             if (str_contains($e->getMessage(), 'Access denied')) {
                 throw new SatimAccessDeniedException('Satim Access Denied', 0, $e);
@@ -493,7 +525,8 @@ class SatimProcessor extends BaseProcessor
 
         try {
             $satim = $this->buildSatim($this->resolveCredentials($payment));
-            $response = $satim->refund($payment->reference, $this->convertToCents($refundAmount));
+            // Satim::refund() takes DZD and converts to centimes internally.
+            $response = $satim->refund($payment->reference, $refundAmount);
 
             // SatimClient::refund() throws SatimException on any non-zero error
             // code, so reaching this point means the call succeeded. The defensive
@@ -532,14 +565,18 @@ class SatimProcessor extends BaseProcessor
     }
 
     /**
-     * Convert amount to cents for SATIM.
-     * SATIM requires amounts in centimes (smallest currency unit).
-     * For DZD: 1 DZD = 100 centimes.
+     * Express a DZD amount in centimes, for comparison against the centime
+     * figures SATIM returns on confirmation.
+     *
+     * This is verification-only. Outbound amounts are always passed to
+     * {@see Satim::amount()} / {@see Satim::refund()} in dinars — those methods
+     * convert to centimes themselves, and converting here too would send the
+     * gateway 100x the intended amount.
      *
      * @param  float  $amount
      * @return int
      */
-    protected function convertToCents(float $amount): int
+    protected function toCentimes(float $amount): int
     {
         return (int) round($amount * 100);
     }
