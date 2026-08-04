@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] - 2026-08-04
+
+### Fixed
+- **SATIM amounts were double-converted to centimes, so the gateway received 100x the intended amount** ([#8](https://github.com/IdeaCraftersHQ/eloquent-payable/issues/8)). `SatimProcessor` converted DZD to centimes before calling `Satim::amount()` / `Satim::refund()`, but satim-laravel has owned that conversion since its v1.0.0. A `createRedirect(..., 2500.00, ...)` registered an order of 25,000,000 centimes and the hosted payment page displayed 250 000,00 DZD. Refunds were issued at 100x the paid amount and rejected by SATIM, so they could not succeed at all. The processor now passes dinars, as it did up to v2.1.1. Affected v2.1.2 through v2.3.0; introduced in `3513511`.
+
+### Added
+- `doCompleteRedirect()` now verifies SATIM's reported `depositAmount` / `amount` against the local `Payment` before marking it paid. On disagreement the payment is marked failed, the two figures are recorded under `metadata.amount_mismatch`, and a new `PaymentAmountMismatchException` is thrown rather than a wrong-magnitude capture being completed silently. Verification is skipped when SATIM reports no amount.
+
+### Changed
+- `SatimProcessor::convertToCents()` renamed to `toCentimes()` and repurposed for confirmation-time verification only. Deliberately renamed rather than kept: a subclass that overrode `convertToCents()` to compensate for the bug would otherwise have silently corrupted the new amount check.
+
+### Upgrade notes
+- No public API changes. Anyone on v2.1.2–v2.3.0 who was compensating by pre-dividing amounts by 100 must remove that workaround, including any subclass override of `convertToCents()`.
+
+---
+
 ## [2.3.0] - 2026-06-17
 
 ### Added
