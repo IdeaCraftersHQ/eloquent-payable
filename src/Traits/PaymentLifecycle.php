@@ -87,13 +87,14 @@ trait PaymentLifecycle
             'paid_at' => $paidAt ?? Carbon::now(),
         ]);
 
-        // Fire the payment completed event
+        // Fire the payment completed event safely to prevent synchronous listener
+        // exceptions from affecting the already-committed payment state change
         if ($this->shouldEmitEvents()) {
-            event(new PaymentCompleted($this));
-            
+            $this->fireEventSafely(new PaymentCompleted($this));
+
             // Fire deprecated OfflinePaymentConfirmed event for backward compatibility
             if ($this->isOffline()) {
-                event(new OfflinePaymentConfirmed($this));
+                $this->fireEventSafely(new OfflinePaymentConfirmed($this));
             }
         }
 
@@ -140,9 +141,10 @@ trait PaymentLifecycle
             'notes' => $reason ? ($this->notes ? $this->notes . "\n" . $reason : $reason) : $this->notes,
         ]);
 
-        // Fire the payment failed event
+        // Fire the payment failed event safely to prevent synchronous listener
+        // exceptions from affecting the already-committed payment state change
         if ($this->shouldEmitEvents()) {
-            event(new PaymentFailed($this));
+            $this->fireEventSafely(new PaymentFailed($this));
         }
 
         return $this;
@@ -175,8 +177,10 @@ trait PaymentLifecycle
             'notes' => $reason ? ($this->notes ? $this->notes . "\n" . $reason : $reason) : $this->notes,
         ]);
 
+        // Fire the payment canceled event safely to prevent synchronous listener
+        // exceptions from affecting the already-committed payment state change
         if ($this->shouldEmitEvents()) {
-            event(new PaymentCanceled($this));
+            $this->fireEventSafely(new PaymentCanceled($this));
         }
 
         return $this;
